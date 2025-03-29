@@ -1,4 +1,5 @@
 *.exe
+lwm
 *.o
 *.bin
 bin
