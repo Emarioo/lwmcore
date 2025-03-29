@@ -103,7 +103,7 @@ label: char[1] "samae"    # ERROR: Characters does not fit
 **NOTE:** Undefined behaviour if you specify an array with a size of more than 10000 (100000 or more might be fine but we haven't verified it)
 
 ## Include directive
-The `#include` directive inserts another assembly file at the directive's location. It is as simple as a text copy and insert. Since you cannot specify more than one assembly file to the assembler (by design), you have to use include directives to compile large assembly programs split across multiple files.
+The `#include` directive inserts another assembly file at the directive's location. It is as simple as a text copy and insert. Since you cannot specify more than one assembly file to the assembler (by design), you have to use include directives to compile large assembly programs split across multiple files. Circular includes is not allowed.
 
 The path specified in the include directive may be:
 - An absolute path.

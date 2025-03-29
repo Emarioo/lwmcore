@@ -4,9 +4,9 @@
 //   PUBLIC FUNCTIONS
 //#######################
 
-#define ERROR_SRC_RET(HEAD, FORMAT, ...) Location loc = count_lines(&text, HEAD, info->source_file.ptr); error_src(loc, FORMAT, ##__VA_ARGS__); return 1
-#define ERROR_SRC(HEAD, FORMAT, ...) Location loc = count_lines(&text, HEAD, info->source_file.ptr); error_src(loc, FORMAT, ##__VA_ARGS__);
-#define LOG_SRC(HEAD, FORMAT, ...) Location loc = count_lines(&text, HEAD, info->source_file.ptr); log_src(loc, FORMAT, ##__VA_ARGS__);
+#define ERROR_SRC_RET(HEAD, FORMAT, ...) Location loc = count_lines(&text, HEAD, info); error_src(loc, FORMAT, ##__VA_ARGS__); return 1
+#define ERROR_SRC(HEAD, FORMAT, ...) Location loc = count_lines(&text, HEAD, info); error_src(loc, FORMAT, ##__VA_ARGS__);
+#define LOG_SRC(HEAD, FORMAT, ...) Location loc = count_lines(&text, HEAD, info); log_src(loc, FORMAT, ##__VA_ARGS__);
 
 bool at_eof(string* text, int* head) {
     return *head >= text->len;
@@ -32,9 +32,25 @@ bool assemble(string text, Bin* bin, AssemblerInfo* info) {
         Assert(buffer.ptr);
         buffer.len = text.len;
         memcpy(buffer.ptr, text.ptr, text.len);
-        
+
+        LocationMapping* map = &info->loc_map[info->loc_map_len++];
+        map->file = info->source_file;
+        map->head_start = 0;
+        map->line = 1;
+        map->head_end = buffer.len;
+
+        // TODO: Handle circular includes
+
         int head = 0;
         while(head < buffer.len) {
+            // Skip comments and strings. We dont want to match include in those.
+            parse_space(&buffer, &head);
+            if(head >= buffer.len)
+                break;
+            parse_string(&buffer, &head, nullptr);
+            if(head >= buffer.len)
+                break;
+
             // quick check
             if(buffer.ptr[head++] != 'i') {
                 continue;
@@ -57,6 +73,11 @@ bool assemble(string text, Bin* bin, AssemblerInfo* info) {
                 ERROR_SRC_RET(head, "Expected a string!\n");
             }
 
+            // TODO: Search for path in folder of source_file and include folders.
+            // int slash_at=info->source_file.len;
+            // while(slash_at>0 && info->source_file.ptr[--slash_at] != '/');
+            // if(slash_at != -1) { }
+
             FILE* file = fopen(file_path.ptr, "rb");
             if(!file) {
                 ERROR_SRC_RET(head_file_path, "Could not read '%s'.\n", file_path.ptr);
@@ -73,6 +94,63 @@ bool assemble(string text, Bin* bin, AssemblerInfo* info) {
                 buffer.ptr = new_buffer;
                 buffer_max = new_max;
             }
+
+            
+            // find location map where we are doing the file data insert
+            int split_point = head_before_include;
+            int split_loc_map = -1;
+            for(int i=0;i<info->loc_map_len;i++) {
+                LocationMapping* map = &info->loc_map[i];
+                if(split_point >= map->head_start && split_point < map->head_end) {
+                    split_loc_map = i;
+                }
+            }
+            Assert(split_loc_map != -1);
+
+            if(info->loc_map_len >= MAX_LOCATION_MAPPING) {
+                ERROR_SRC_RET(head_before_include, "Max location mapping reached! (%d)\n", MAX_LOCATION_MAPPING);
+            }
+
+            // update head by filesize to rest of mappings
+            int incr_head = filesize - (head - head_before_include);
+            for(int i=split_loc_map+1;i<info->loc_map_len;i++) {
+                LocationMapping* map = &info->loc_map[i];
+                map->head_start += incr_head;
+                map->head_end += incr_head;
+            }
+
+            // move over maps and make room for two new ones
+            memmove(info->loc_map + split_loc_map + 3, info->loc_map + split_loc_map + 1, (info->loc_map_len - (split_loc_map+1)) * sizeof(LocationMapping));
+            info->loc_map_len += 2;
+            
+            
+            LocationMapping* map0 = &info->loc_map[split_loc_map];
+            LocationMapping* map1 = &info->loc_map[split_loc_map + 1];
+            LocationMapping* map2 = &info->loc_map[split_loc_map + 2];
+
+            // printf("Split %s [%d %d]\n", map0->file.ptr, map0->head_start, map0->head_end);
+            
+            map2->file = map0->file;
+            map2->head_start = head_before_include + filesize;
+            map2->head_end = map0->head_end + filesize;
+            map0->head_end = head_before_include;
+            map1->file = file_path;
+            map1->head_start = head_before_include;
+            map1->head_end = head_before_include + filesize;
+            map1->line = 1;
+
+            // derive line info from the first half of the split and update second map
+            int index = map0->head_start;
+            map2->line = map0->line;
+            while(index < map0->head_end) {
+                if(buffer.ptr[index++] == '\n') {
+                    map2->line++;
+                }
+            }
+
+            // printf("map 0 %s [%d %d]\n", map0->file.ptr, map0->head_start, map0->head_end);
+            // printf("map 1 %s [%d %d]\n", map1->file.ptr, map1->head_start, map1->head_end);
+            // printf("map 2 %s [%d %d]\n", map2->file.ptr, map2->head_start, map2->head_end);
 
             /*
                 Our buffer looks like this:
@@ -92,12 +170,17 @@ bool assemble(string text, Bin* bin, AssemblerInfo* info) {
 
         // TODO: Memory leak of buffer
         text = buffer;
+
+        // preproc debugging
+        // FILE* f = fopen("preproc.txt", "wb");
+        // fwrite(buffer.ptr, 1, buffer.len, f);
+        // fclose(f);
     }
 
     // Parse the stuff
 
     {
-        Location loc = count_lines(&text, 0, info->source_file.ptr);
+        Location loc = count_lines(&text, 0, info);
         Block* block = &info->blocks[info->block_len];
         block->addr = 0;
         block->location = loc;
@@ -105,7 +188,7 @@ bool assemble(string text, Bin* bin, AssemblerInfo* info) {
     }
 
     // TODO: Handle end of file
-    #define CHECK_EOF if (at_eof(&text, &head)) { Location loc = count_lines(&text, head, info->source_file.ptr); error_src(loc, "Unexpected end of file!\n"); return 1; };
+    #define CHECK_EOF if (at_eof(&text, &head)) { Location loc = count_lines(&text, head, info); error_src(loc, "Unexpected end of file!\n"); return 1; };
 
     int relative_address = 0;
     int head = 0;
@@ -247,16 +330,14 @@ bool assemble(string text, Bin* bin, AssemblerInfo* info) {
             int addr;
             int parsed_chars = parse_int(&text, &head, &addr);
             if(!parsed_chars) {
-                Location loc = count_lines(&text, head, info->source_file.ptr);
-                error_src(loc, "Unexpected character '%c'\n", text.ptr[head]);
-                return 1;
+                ERROR_SRC_RET(head, "Unexpected character '%c'\n", text.ptr[head]);
             }
             
             // Determine size for previous block
             info->blocks[info->block_len-1].size = relative_address;
 
             // Create new block and set its address
-            Location loc = count_lines(&text, head, info->source_file.ptr);
+            Location loc = count_lines(&text, head, info);
             Block* block = &info->blocks[info->block_len];
             block->addr = addr;
             block->location = loc;
@@ -265,9 +346,7 @@ bool assemble(string text, Bin* bin, AssemblerInfo* info) {
         }
 
         if (!parsed_chars) {
-            Location loc = count_lines(&text, head, info->source_file.ptr);
-            error_src(loc, "Unexpected character '%c'\n", text.ptr[head]);
-            return false;
+            ERROR_SRC_RET(head, "Unexpected character '%c'\n", text.ptr[head]);
         }
 
         parse_space(&text, &head);
@@ -275,9 +354,8 @@ bool assemble(string text, Bin* bin, AssemblerInfo* info) {
         if (text.ptr[head] == ':') {
             // label
             Block* block = &info->blocks[info->block_len-1];
-            if (block->label_len >= MAX_LABELS) {
-                Location loc = count_lines(&text, location_head, info->source_file.ptr);
-                error_src(loc, "Max label limit reached! (%d)\n", MAX_LABELS);
+            if (block->label_len >= MAX_LABELS_PER_BLOCK) {
+                ERROR_SRC_RET(location_head, "Max label limit reached! (%d)\n", MAX_LABELS_PER_BLOCK);
                 return 1;
             }
 
@@ -296,14 +374,14 @@ bool assemble(string text, Bin* bin, AssemblerInfo* info) {
             string operand0;
             int parsed_chars = parse_name(&text, &head, &operand0);
             if(!parsed_chars) {
-                ERROR_SRC(head, "Could not parse instruction. Skipping to next line.\n");
+                ERROR_SRC(location_head, "Could not parse instruction. Skipping to next line. (%s)\n", name.ptr);
                 skip_line(&text, &head);
                 continue;
             }
 
             inst.reg0 = get_regnr(operand0);
             if(inst.reg0 == -1) {
-                ERROR_SRC(head, "Could not parse instruction. Skipping to next line.\n");
+                ERROR_SRC(location_head, "Could not parse instruction. Skipping to next line. (%s)\n", name.ptr);
                 skip_line(&text, &head);
                 continue;
             }
@@ -323,7 +401,7 @@ bool assemble(string text, Bin* bin, AssemblerInfo* info) {
             if(parsed_chars) {
                 inst.reg1 = get_regnr(operand1);
                 if(inst.reg1 == -1) {
-                    ERROR_SRC(head, "Could not parse instruction. Skipping to next line.\n");
+                    ERROR_SRC(location_head, "Could not parse instruction. Skipping to next line. (%s)\n", name.ptr);
                     skip_line(&text, &head);
                     continue;
                 }
@@ -334,14 +412,14 @@ bool assemble(string text, Bin* bin, AssemblerInfo* info) {
                 }
             }
             if(!parsed_chars) {
-                ERROR_SRC(head, "Could not parse instruction. Skipping to next line.\n");
+                ERROR_SRC(location_head, "Could not parse instruction. Skipping to next line. (%s)\n", name.ptr);
                 skip_line(&text, &head);
                 continue;
             }
             
             Block* block = &info->blocks[info->block_len-1];
             if(block->inst_len >= MAX_INST_PER_BLOCK) {
-                ERROR_SRC_RET(head, "Max instruction per block reached! (%d)\n", MAX_INST_PER_BLOCK);
+                ERROR_SRC_RET(location_head, "Max instruction per block reached! (%d)\n", MAX_INST_PER_BLOCK);
             }
             block->insts[block->inst_len++] = inst;
             relative_address+=2;
@@ -528,17 +606,17 @@ int parse_space(string* text, int* head) {
         if (*head + 1 < text->len)
             chr_next = text->ptr[*head + 1];
 
-        if(chr == '"' || chr == '\'') {
-            char end_chr = chr;
-            ++*head;
-            while(*head < text->len) {
-                // TODO: Handle escaped characters
-                if(text->ptr[*head] == end_chr)
-                    break;
-                ++*head;
-            }
-            continue;
-        }
+        // if(chr == '"' || chr == '\'') {
+        //     char end_chr = chr;
+        //     ++*head;
+        //     while(*head < text->len) {
+        //         // TODO: Handle escaped characters
+        //         if(text->ptr[*head] == end_chr)
+        //             break;
+        //         ++*head;
+        //     }
+        //     continue;
+        // }
 
         if (chr == '#' || chr == ';' || (chr == '/' && chr_next == '/')) {
             ++*head;
@@ -573,8 +651,10 @@ int parse_space(string* text, int* head) {
 }
 
 int parse_string(string* text, int* head, string* str) {
-    str->len = 0;
-    str->ptr = nullptr;
+    if(str) {
+        str->len = 0;
+        str->ptr = nullptr;
+    }
     int origin_head = *head;
 
     char chr = text->ptr[*head];
@@ -582,22 +662,30 @@ int parse_string(string* text, int* head, string* str) {
         return 0;
     }
     ++*head;
-    str->ptr = &text->ptr[*head];
+    if(str) {
+        str->ptr = &text->ptr[*head];
+    }
     while(*head < text->len) {
         // TODO: Handle escaped characters
-        if(text->ptr[*head] == '"')
+        if(text->ptr[*head] == '"') {
+            ++*head;
             break;
+        }
         ++*head;
-        str->len++;
+        if(str) {
+            str->len++;
+        }
     }
 
-    // IMPORTANT: Do not remove this allocation, code when processing includes relies
-    //   on the returned memory not being invalidated.
-    // IMPORTANT: Code also relies on it being null terminated at its proper length.
-    char* buf = malloc(str->len + 1);
-    memcpy(str->ptr, buf, str->len);
-    buf[str->len] = '\0';
-    str->ptr = buf;
+    if(str) {
+        // IMPORTANT: Do not remove this allocation, code when processing includes relies
+        //   on the returned memory not being invalidated.
+        // IMPORTANT: Code also relies on it being null terminated at its proper length.
+        char* buf = malloc(str->len + 1);
+        memcpy(buf, str->ptr, str->len);
+        buf[str->len] = '\0';
+        str->ptr = buf;
+    }
     return *head - origin_head;
 }
 
@@ -621,10 +709,17 @@ int get_regnr(string name) {
         return -1;
     return name.ptr[1] - 'a';
 }
-Location count_lines(string* text, int head, const char* file) {
+Location count_lines(string* text, int head, AssemblerInfo* info) {
     Assert(head < text->len);
-    Location loc = {file, 1, 1};
-    int index = 0;
+    LocationMapping* map = nullptr;
+    for(int i=0;i<info->loc_map_len;i++) {
+        map = &info->loc_map[i];
+        if(head >= map->head_start && head < map->head_end)
+            break;
+    }
+    Assert(map);
+    Location loc = {map->file.ptr, map->line, 1};
+    int index = map->head_start;
     while(index < head) {
         if (text->ptr[index] == '\n') {
             loc.line++;

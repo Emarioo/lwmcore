@@ -2,9 +2,10 @@
 
 #include "lwmcore/util.h"
 
-#define MAX_LABELS 100
-#define MAX_BLOCKS 100
+#define MAX_LABELS_PER_BLOCK 100
 #define MAX_INST_PER_BLOCK 100
+#define MAX_BLOCKS 100
+#define MAX_LOCATION_MAPPING 100
 
 typedef struct {
     const char* file;
@@ -31,18 +32,28 @@ typedef struct {
     Location location;
     
     int inst_len;
-    Instruction insts[100]; // TODO: Increase limit
+    Instruction insts[MAX_LABELS_PER_BLOCK]; // TODO: Increase limit
     
     int label_len;
-    Label labels[100]; // TODO: Increase limit
+    Label labels[MAX_INST_PER_BLOCK]; // TODO: Increase limit
 } Block;
+
+typedef struct {
+    int head_start;
+    int head_end;
+    string file;
+    int line;
+} LocationMapping;
 
 typedef struct {
     string source_file;
     int error_code;
     
     int block_len;
-    Block blocks[100]; // TODO: Increase limit
+    Block blocks[MAX_BLOCKS]; // TODO: Increase limit
+
+    int loc_map_len;
+    LocationMapping loc_map[MAX_LOCATION_MAPPING]; // TODO: Increase limit
 } AssemblerInfo;
 
 //#######################
@@ -60,4 +71,4 @@ int parse_space(string* text, int* head);
 int parse_string(string* text, int* head, string* str);
 int skip_line(string* text, int* head);
 int get_regnr(string name);
-Location count_lines(string* text, int head, const char* f);
+Location count_lines(string* text, int head, AssemblerInfo* info);
