@@ -4,7 +4,7 @@
 //   PUBLIC FUNCTIONS
 //#######################
 
-#define ERROR_SRC_RET(HEAD, FORMAT, ...) Location loc = count_lines(&text, HEAD, info); error_src(loc, FORMAT, ##__VA_ARGS__); return 1
+#define ERROR_SRC_RET(HEAD, FORMAT, ...) Location loc = count_lines(&text, HEAD, info); error_src(loc, FORMAT, ##__VA_ARGS__); return false
 #define ERROR_SRC(HEAD, FORMAT, ...) Location loc = count_lines(&text, HEAD, info); error_src(loc, FORMAT, ##__VA_ARGS__);
 #define LOG_SRC(HEAD, FORMAT, ...) Location loc = count_lines(&text, HEAD, info); log_src(loc, FORMAT, ##__VA_ARGS__);
 
@@ -24,11 +24,11 @@ bool assemble(string text, Bin* bin, AssemblerInfo* info) {
     // Apply include directives
     {
         // TODO: You can do more efficient memcpys here but computers are fast so it's honestly fine.
-        int buffer_max = 0x100000;
+        int buffer_max = 0x100000; // 1 MB
         if(text.len > buffer_max)
             buffer_max = text.len;
         string buffer;
-        buffer.ptr = malloc(buffer_max); // 1 MB
+        buffer.ptr = malloc(buffer_max);
         Assert(buffer.ptr);
         buffer.len = text.len;
         memcpy(buffer.ptr, text.ptr, text.len);
@@ -188,7 +188,7 @@ bool assemble(string text, Bin* bin, AssemblerInfo* info) {
     }
 
     // TODO: Handle end of file
-    #define CHECK_EOF if (at_eof(&text, &head)) { Location loc = count_lines(&text, head, info); error_src(loc, "Unexpected end of file!\n"); return 1; };
+    #define CHECK_EOF if (at_eof(&text, &head)) { Location loc = count_lines(&text, head, info); error_src(loc, "Unexpected end of file!\n"); return false; };
 
     int relative_address = 0;
     int head = 0;
@@ -356,7 +356,6 @@ bool assemble(string text, Bin* bin, AssemblerInfo* info) {
             Block* block = &info->blocks[info->block_len-1];
             if (block->label_len >= MAX_LABELS_PER_BLOCK) {
                 ERROR_SRC_RET(location_head, "Max label limit reached! (%d)\n", MAX_LABELS_PER_BLOCK);
-                return 1;
             }
 
             // TODO: Alignment
@@ -369,53 +368,68 @@ bool assemble(string text, Bin* bin, AssemblerInfo* info) {
             // instruction
 
             Instruction inst = {0};
-            inst.name = name;
+            inst.opcode = get_opcode(name);
+            inst.regs[0] = REG_INVALID;
+            inst.regs[1] = REG_INVALID;
 
-            string operand0;
-            int parsed_chars = parse_name(&text, &head, &operand0);
-            if(!parsed_chars) {
-                ERROR_SRC(location_head, "Could not parse instruction. Skipping to next line. (%s)\n", name.ptr);
-                skip_line(&text, &head);
-                continue;
+            if(inst.opcode == INST_INVALID) {
+                ERROR_SRC_RET(location_head, "Unknown instruction '%s'\n", name.ptr);
             }
 
-            inst.reg0 = get_regnr(operand0);
-            if(inst.reg0 == -1) {
-                ERROR_SRC(location_head, "Could not parse instruction. Skipping to next line. (%s)\n", name.ptr);
-                skip_line(&text, &head);
-                continue;
-            }
-            
-            parse_space(&text, &head);
-            
-            if(text.ptr[head] != ',') {
-                continue;
-            }
-            head++;
+            bool had_comma = false;
 
-            parse_space(&text, &head);
+            bool failed = false;
 
-            string operand1;
-            int value;
-            parsed_chars = parse_name(&text, &head, &operand1);
-            if(parsed_chars) {
-                inst.reg1 = get_regnr(operand1);
-                if(inst.reg1 == -1) {
-                    ERROR_SRC(location_head, "Could not parse instruction. Skipping to next line. (%s)\n", name.ptr);
-                    skip_line(&text, &head);
-                    continue;
+            // parse operands
+            while(head < text.len) {
+                parse_space(&text, &head);
+                if(head >= text.len)
+                    break;
+
+                string operand;
+                int value;
+                int parsed_chars = parse_name(&text, &head, &operand);
+                if(parsed_chars) {
+                    int reg = get_regnr(operand);
+                    if(reg != REG_INVALID) {
+                        if (inst.regs[0] == REG_INVALID) {
+                            inst.regs[0] = reg;
+                        } else {
+                            inst.regs[1] = reg;
+                        }
+                    } else if(had_comma) {
+                        failed = true;
+                        ERROR_SRC(location_head, "Could not parse instruction. Skipping to next line. (%s)\n", name.ptr);
+                        skip_line(&text, &head);
+                        continue;
+                    } else {
+                        if(parsed_chars)
+                            head -= parsed_chars;
+                        break;
+                    }
+                } else {
+                    parsed_chars = parse_int(&text, &head, &value);
+                    if (parsed_chars) {
+                        inst.imm = value;
+                        if(inst.opcode >= INST_SHL && inst.opcode <= INST_SHR && inst.imm < 0 || inst.imm > 15) {
+                            ERROR_SRC_RET(location_head, "Immediate for shl/shr must be in the range (0-15)! (not %d)", inst.imm);
+                        }
+                    } else if (had_comma) {
+                        failed = true;
+                        ERROR_SRC(location_head, "Could not parse instruction. Skipping to next line. (%s)\n", name.ptr);
+                        skip_line(&text, &head);
+                        continue;
+                    }
                 }
-            } else {
-                parsed_chars = parse_int(&text, &head, &value);
-                if (parsed_chars) {
-                    inst.imm = value;
+
+                if(text.ptr[head] != ',') {
+                    break;
                 }
+                head++;
+                had_comma = true;
             }
-            if(!parsed_chars) {
-                ERROR_SRC(location_head, "Could not parse instruction. Skipping to next line. (%s)\n", name.ptr);
-                skip_line(&text, &head);
+            if(failed)
                 continue;
-            }
             
             Block* block = &info->blocks[info->block_len-1];
             if(block->inst_len >= MAX_INST_PER_BLOCK) {
@@ -478,6 +492,45 @@ bool assemble(string text, Bin* bin, AssemblerInfo* info) {
     }
     if(has_overlap)
         return false;
+
+    // Emit blocks to binary
+    Block* last_block = &info->blocks[sorted_block_indices[block_len-1]];
+    bin->max = last_block->addr + last_block->size;
+    bin->ptr = malloc(bin->max);
+    bin->len = 0;
+    memset(bin->ptr, 0, bin->max);
+
+    for(int bi=0;bi<block_len;bi++) {
+        Block* block = &info->blocks[sorted_block_indices[bi]];
+
+        for(int i=0;i<block->inst_len;i++) {
+            Instruction* inst = &block->insts[i];
+            u16 word = 0;
+
+            // Emit instructions
+            if(inst->opcode == INST_LI) {
+                Assert(inst->regs[0] >= 0 && inst->regs[0] <= 0xF);
+                // word = (inst->opcode) | (inst->regs[0] << 4) | ((inst->imm << 8) & 0xFF00);
+                word = (inst->opcode << 12) | (inst->regs[0] << 8) | ((inst->imm) & 0xFF);
+            } else if(inst->opcode == INST_RET) {
+                word = (inst->opcode << 8);
+            } else if(inst->opcode == INST_JMP || inst->opcode == INST_CALL) {
+                word = (inst->opcode << 12) | ((inst->imm) & 0xFFF);
+            } else if(inst->opcode >= INST_SHL && inst->opcode <= INST_SHR) {
+                Assert((inst->regs[0] &~0xF) == 0);
+                Assert(inst->imm >= 0 && inst->imm <= 15);
+                word = (inst->opcode << 8) | (inst->regs[0] << 4) | (inst->imm);
+            } else if(inst->opcode >= INST_LODW && inst->opcode <= INST_SHR) {
+                Assert((inst->regs[0] &~0xF) == 0);
+                Assert((inst->regs[1] &~0xF) == 0);
+                word = (inst->opcode << 8) | (inst->regs[0] << 4) | (inst->regs[1]);
+            }
+
+
+            *(i16*)&bin->ptr[bin->len] = word;
+            bin->len += 2;
+        }
+    }
 
     return true;
 } 
@@ -561,7 +614,7 @@ int parse_int(string* text, int* head, int* value) {
             break;
         }
     } else if (*head + 2 < text->len && text->ptr[*head] == '0' && text->ptr[*head+1] == 'o') {
-        // 2-base hexidecimal
+        // 8-base hexidecimal
         *head += 2;
         while(*head < text->len) {
             char chr = text->ptr[*head];
@@ -703,11 +756,33 @@ int skip_line(string* text, int* head) {
 int get_regnr(string name) {
     if(name.len != 2)
         return -1;
+    if(name.ptr[0] == 's' || name.ptr[1] == 'p')
+        return REG_SP;
+    if(name.ptr[0] == 'p' || name.ptr[1] == 'c')
+        return REG_PC;
     if(name.ptr[0] != 'r')
         return -1;
     if(name.ptr[1] < 'a' || name.ptr[1] > 'h')
         return -1;
     return name.ptr[1] - 'a';
+}
+InstEncoding get_opcode(string name) {
+    if(name.len == 0)
+        return INST_INVALID;
+    for(int i=0;i<256;i++) {
+        if(equal(name, inst_name_table[i]))
+            return (InstEncoding)i;
+    }
+    return INST_INVALID;
+}
+
+string get_opcode_name(int opcode) {
+    Assert(opcode >= 0 && opcode <= 255);
+    const char* str = inst_name_table[opcode];
+    string s;
+    s.ptr = (char*)str; // TODO: Don't cast this
+    s.len = strlen(str);
+    return s;
 }
 Location count_lines(string* text, int head, AssemblerInfo* info) {
     Assert(head < text->len);
@@ -731,3 +806,42 @@ Location count_lines(string* text, int head, AssemblerInfo* info) {
     }
     return loc;
 }
+
+const char* inst_name_table[256] = {
+    "li",
+    "jeq",
+    "jne",
+    "jlt",
+    "jgt",
+    "jmp",
+    "call",
+    "", // RESERVED 7
+    "", "", "", "", // load/store sp
+
+    // Unused instructions 10 x 18 (from 12 - 195)
+    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+    
+    // Extended opcode encoding (8 bits)
+    "lodw",
+    "lodb",
+    "strw",
+    "strb",
+    "add",
+    "sub",
+    "and",
+    "or",
+    "xor",
+    "cmp",
+    "ret",
+    "shl",
+    "shr",
+};

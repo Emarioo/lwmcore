@@ -16,7 +16,7 @@ An assembly program is built upon these:
 - **Block** : Describes an address range in the final executable. Marked with `ORG`.
 - **Label** : A name for an address at the label's location.
 - **Instruction** : An instruction with a name and operands.
-- **Global variable** : Described with a type and an initializer such as a literal strings and numbers. Commonly prefixed by a label.
+- **Global variable** : Described with a type and an initializer such as literal strings and numbers. Commonly prefixed by a label.
 - **Include directive** : Inserts text from another assembly file.
 
 ## Comments

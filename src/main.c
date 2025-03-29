@@ -45,6 +45,7 @@ int main(int argc, const char** argv) {
         fseek(file, 0, SEEK_SET);
         buffer.ptr = (char*)malloc(buffer.len);
         fread(buffer.ptr, 1, buffer.len, file);
+        fclose(file);
         
         AssemblerInfo* info = (AssemblerInfo*)malloc(sizeof(AssemblerInfo));
         memset(info, 0, sizeof(*info));
@@ -52,6 +53,8 @@ int main(int argc, const char** argv) {
         bool res = assemble(buffer, &bin, info);
         if(!res)
             return 1;
+
+        dump(bin);
     }
 
     if (file_is_bin || (file_is_asm && do_emulate)) {

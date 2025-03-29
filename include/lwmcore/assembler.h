@@ -1,6 +1,7 @@
 #pragma once
 
 #include "lwmcore/util.h"
+#include "lwmcore/encoding.h"
 
 #define MAX_LABELS_PER_BLOCK 100
 #define MAX_INST_PER_BLOCK 100
@@ -19,9 +20,9 @@ typedef struct {
 } Label;
 
 typedef struct {
-    string name;
-    int reg0;
-    int reg1;
+    // string name;
+    int opcode;
+    int regs[2];
     int imm;
     string goto_label;
 } Instruction;
@@ -70,5 +71,4 @@ int parse_int(string* text, int* head, int* value);
 int parse_space(string* text, int* head);
 int parse_string(string* text, int* head, string* str);
 int skip_line(string* text, int* head);
-int get_regnr(string name);
 Location count_lines(string* text, int head, AssemblerInfo* info);

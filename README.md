@@ -24,7 +24,7 @@ lwm main.asm -e
 - `./lwm.exe`
 
 # Documents
-See specifications in [docs](/docs)
+See specifications in [docs](/docs). (all documents are work in progress)
 - [CPU](/docs/cpu.md) : Thorough details of the CPU's registers, special addresses, clock speed.
 - [Assembly](/docs/assembly.md) : Thorough guide of the assembly syntax.
 - [Guide](/docs/guide.md) : A complete guide to using the assembler, emulator, and realising the system in **Logic World**.
