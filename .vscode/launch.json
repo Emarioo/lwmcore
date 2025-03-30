@@ -5,7 +5,7 @@
         "type": "cppdbg",
         "request": "launch",
         "program": "${workspaceFolder}/lwm.exe",
-        "args": ["examples/sample.asm","-e"],
+        "args": [ "data.partialworld" ],
         "stopAtEntry": false,
         "cwd": "${workspaceFolder}",
         "environment": [],
