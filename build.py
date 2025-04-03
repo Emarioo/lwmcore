@@ -14,5 +14,6 @@ err = os.system(f"gcc -std=c17 {INCL} {SRC} -g -o {OUT}")
 # EXECUTE
 if err == 0:
 	# os.system(f"{OUT} examples/sample.asm -e")
-	os.system(f"{OUT} examples/data.partialworld")
-	# os.system(f"{OUT} examples/sample.asm --rom data.partialworld")
+	# os.system(f"{OUT} examples/data.partialworld")
+	# os.system(f"{OUT} examples/sample.asm --rom test.partialworld")
+	os.system(f"{OUT} examples/sample.asm --rom new_rom16")

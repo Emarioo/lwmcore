@@ -49,9 +49,12 @@ BlotterData* decompose_blotter_data(string data, const char* source_path) {
         error("Can't handle save version %d. Only 7.\n", (int)header->save_format_version);
         return nullptr;
     }
+
+    // #define LOG(F, ...) printf(F, ##__VA_ARGS__);
+    #define LOG(F, ...)
     
     // nocheckin LOGGING
-    printf("Game version: %d.%d.%d.%d\n", header->game_version[0], header->game_version[1], header->game_version[2], header->game_version[3]);
+    LOG("Game version: %d.%d.%d.%d\n", header->game_version[0], header->game_version[1], header->game_version[2], header->game_version[3]);
 
     const char* save_type = "Unknown";
     switch(header->save_type) {
@@ -61,11 +64,11 @@ BlotterData* decompose_blotter_data(string data, const char* source_path) {
             error("Expected save type 1 or 2 but got %d\n", (int)header->save_type);
             return nullptr;
     }
-    printf("Save type: %s\n", save_type);
+    LOG("Save type: %s\n", save_type);
 
     // nocheckin LOGGING
-    printf("Num components: %d\n", header->num_components);
-    printf("Num wires: %d\n", header->num_wires);
+    LOG("Num components: %d\n", header->num_components);
+    LOG("Num wires: %d\n", header->num_wires);
 
     //####################################
     //    PARSE VARIABLE LENGTH DATA
@@ -82,7 +85,7 @@ BlotterData* decompose_blotter_data(string data, const char* source_path) {
         head += 16; // skip version
 
         // nocheckin
-        printf("Mod %s, %d.%d.%d.%d\n", name.ptr, version[0], version[1], version[2], version[3]);
+        LOG("Mod %s, %d.%d.%d.%d\n", name.ptr, version[0], version[1], version[2], version[3]);
     }
 
     int num_component_ids = *(i32*)(data.ptr+head);
@@ -94,7 +97,7 @@ BlotterData* decompose_blotter_data(string data, const char* source_path) {
     memset(component_map, 0, component_map_size);
 
     // nocheckin logging
-    printf("Components ids (%d):\n", num_component_ids);
+    LOG("Components ids (%d):\n", num_component_ids);
     for(int ci=0;ci<num_component_ids;ci++) {
         i16 component_id = *(i16*)(data.ptr+head);
         head += 2;
@@ -102,12 +105,12 @@ BlotterData* decompose_blotter_data(string data, const char* source_path) {
         string name = decompose_blotter_string(&data, &head);
 
         // nocheckin LOGGING
-        printf("  %d %s\n", (int)component_id, name.ptr);
+        LOG("  %d %s\n", (int)component_id, name.ptr);
 
         component_map[component_id] = name;
     }
 
-    printf("Components (%d):\n", header->num_components);
+    LOG("Components (%d):\n", header->num_components);
     for(int ci=0;ci<header->num_components;ci++) {
         
         BlotterComponentHeader* component = (BlotterComponentHeader*)(data.ptr+head);
@@ -135,51 +138,51 @@ BlotterData* decompose_blotter_data(string data, const char* source_path) {
 
         // nocheckin LOGGING
         float pos[3] = {component->position[0]*0.001f, component->position[1]*0.001f, component->position[2]*0.001f};
-        printf(" 0x%x: %s %.2f %.2f %.2f\n", ((int)((char*)component - data.ptr)), comp_name.ptr, pos[0], pos[1], pos[2]);
-        printf("    addr/parent: %d, %d\n", component->addr, component->parent_addr);
+        LOG(" 0x%x: %s %.2f %.2f %.2f\n", ((int)((char*)component - data.ptr)), comp_name.ptr, pos[0], pos[1], pos[2]);
+        LOG("    addr/parent: %d, %d\n", component->addr, component->parent_addr);
         if(custom_size) {
-            printf("    custom data [0x%x - 0x%x] (%d)\n", (int)(custom_data - data.ptr), (int)(custom_data - data.ptr) + custom_size, custom_size);
+            LOG("    custom data [0x%x - 0x%x] (%d)\n", (int)(custom_data - data.ptr), (int)(custom_data - data.ptr) + custom_size, custom_size);
             if(equal(comp_name, "MHG.CircuitBoard")) {
                 BlotterCustomData_CircuitBoard* custom = (BlotterCustomData_CircuitBoard*)custom_data;
-                printf("    RGB: %d, %d, %d\n", custom->red, custom->blue, custom->green);
-                printf("    width/height: %d, %d\n", custom->width, custom->height);
+                LOG("    RGB: %d, %d, %d\n", custom->red, custom->blue, custom->green);
+                LOG("    width/height: %d, %d\n", custom->width, custom->height);
             } else if(equal(comp_name, "MHG.PanelLabel")) {
                 BlotterCustomData_PanelLabel* custom = (BlotterCustomData_PanelLabel*)custom_data;
-                printf("    data0: %d\n", custom->_0);
-                printf("    RGB: %d, %d, %d\n", custom->red, custom->blue, custom->green);
-                printf("    data1: %x %x %x %x %x\n", custom->_1[0], custom->_1[1], custom->_1[2], custom->_1[3], custom->_1[4]);
+                LOG("    data0: %d\n", custom->_0);
+                LOG("    RGB: %d, %d, %d\n", custom->red, custom->blue, custom->green);
+                LOG("    data1: %x %x %x %x %x\n", custom->_1[0], custom->_1[1], custom->_1[2], custom->_1[3], custom->_1[4]);
                 int temp_head = sizeof(BlotterCustomData_PanelLabel);
                 string temp_data = { custom_size, custom_data };
                 string text = decompose_blotter_string(&temp_data, &temp_head);
                 int* nums = (int*)(custom_data + temp_head);
                 
-                printf("    text: \"");
+                LOG("    text: \"");
                 for(int i=0;i<text.len;i++) {
                     char chr = text.ptr[i];
                     if(chr == '\n') {
-                        printf("\\n");
+                        LOG("\\n");
                     } else if(chr < 32) {
-                        printf("\\x%X%X", chr&0xF0, chr&0xF);
+                        LOG("\\x%X%X", chr&0xF0, chr&0xF);
                     } else {
-                        printf("%c", chr);
+                        LOG("%c", chr);
                     }
-                } printf("\"\n");
+                } LOG("\"\n");
 
-                printf("    data2: %d, %d, %d\n", nums[0], nums[1], nums[2]);
+                LOG("    data2: %d, %d, %d\n", nums[0], nums[1], nums[2]);
             } else  if(equal(comp_name, "MHG.Button")) {
                 BlotterCustomData_Button* custom = (BlotterCustomData_Button*)custom_data;
-                printf("    RGB: %d %d %d\n", custom->red, custom->green, custom->blue);
-                printf("    active: %d\n", custom->active);
+                LOG("    RGB: %d %d %d\n", custom->red, custom->green, custom->blue);
+                LOG("    active: %d\n", custom->active);
             } else  if(equal(comp_name, "MHG.Switch")) {
                 BlotterCustomData_Switch* custom = (BlotterCustomData_Switch*)custom_data;
-                printf("    RGB: %d %d %d\n", custom->red, custom->green, custom->blue);
-                printf("    active: %d\n", custom->active);
+                LOG("    RGB: %d %d %d\n", custom->red, custom->green, custom->blue);
+                LOG("    active: %d\n", custom->active);
             // } else  if(equal(comp_name, "MHG.Delayer")) {
             //     BlotterCustomData_Delayer* custom = (BlotterCustomData_Delayer*)custom_data;
             //     printf("    data0: %x %x %x %x\n", custom->_0[0], custom->_0[1], custom->_0[2], custom->_0[3]);
             //     printf("    data1: %d\n", custom->_1);
             } else {
-                printf("    UNKNOWN\n");
+                LOG("    UNKNOWN\n");
                 // printf("    custom data [0x%x - 0x%x[\n", (int)(custom_data - data.ptr), (int)(custom_data - data.ptr) + custom_size);
                 // printf("    off: 0x%x\n", (int)(custom_data - data.ptr));
                 // for(int i=0;i<custom_size;i++) {
@@ -190,7 +193,7 @@ BlotterData* decompose_blotter_data(string data, const char* source_path) {
         }
     }
 
-    printf("Wires (%d):\n", header->num_wires);
+    LOG("Wires (%d):\n", header->num_wires);
     for(int ci=0;ci<header->num_wires;ci++) {
         BlotterWire* wire = (BlotterWire*)(data.ptr+head);
         head += sizeof(BlotterWire);
@@ -202,14 +205,14 @@ BlotterData* decompose_blotter_data(string data, const char* source_path) {
         int* circuit_ids = (i32*)(data.ptr+head);
         head += num_states * sizeof(int);
 
-        printf("Circuit state ids (%d):\n", num_states);
+        LOG("Circuit state ids (%d):\n", num_states);
     } else if(header->save_type == LW_SAVE_TYPE_WORLD) {
         int num_bytes = *(i32*)(data.ptr+head);
         head += 4;
         i8* state_data = (i8*)(data.ptr+head);
         head += num_bytes;
 
-        printf("Circuit states (%d):\n", num_bytes * 8);
+        LOG("Circuit states (%d):\n", num_bytes * 8);
     } else Assert(false);
 
     if(head != data.len-16) {
@@ -343,8 +346,8 @@ void write_subassembly() {
     // ###############
     data.len = head;
 
-    const char* path = "C:/Program Files (x86)/Steam/steamapps/common/Logic World/subassemblies/test/data.partialworld";
-    // const char* path = "examples/test.partialworld";
+    // const char* path = "C:/Program Files (x86)/Steam/steamapps/common/Logic World/subassemblies/test/data.partialworld";
+    const char* path = "examples/test.partialworld";
     if(DISABLE_FILE_WRITES) {
         printf("fopen '%s' write %d bytes\n", path, data.len);
     } else {
@@ -388,7 +391,7 @@ bool write_metadata(string folder_path, const char* title, bool force) {
         return res; // error already printed
 
     if(DISABLE_FILE_WRITES) {
-        printf("fopen '%s'\n");
+        printf("fopen '%s'\n", meta_path);
     } else {
         FILE* meta = fopen(meta_path, "wb");
         if(!meta) {
@@ -399,7 +402,7 @@ bool write_metadata(string folder_path, const char* title, bool force) {
         fclose(meta);
     }
     if(DISABLE_FILE_WRITES) {
-        printf("fopen '%s'\n");
+        printf("fopen '%s'\n", placements_path);
     } else {
         FILE* placements = fopen(placements_path, "wb");
         if(!placements) {
@@ -427,7 +430,244 @@ bool write_metadata(string folder_path, const char* title, bool force) {
     return true;
 }
 
-bool modify_rom_subassembly(string data, string* rom_data) {
+bool modify_rom_subassembly(string bin_data, string* rom_data) {
+    // Loop through all switches
+    // change their state according to data
+
+    string data;
+    const char* source_path = "data/rom16x16.partialworld";
+    FILE* file = fopen(source_path, "rb");
+    if(!file) {
+        error("File '%s' is corrupt! (to few bytes, %d)\n", source_path, data.len);
+        return false;
+    }
+    fseek(file, 0, SEEK_END);
+    int filesize = ftell(file);
+    fseek(file, 0, SEEK_SET);
+    data.ptr = malloc(filesize);
+    data.len = filesize;
+    fread(data.ptr, 1, filesize, file);
+
+    if(data.len < 16) {
+        error("File '%s' is corrupt! (to few bytes, %d)\n", source_path, data.len);
+        return nullptr;
+    }
+    #undef LOG
+    // #define LOG(F, ...) printf(F, ##__VA_ARGS__);
+    #define LOG(F, ...)
+
+    int bit_offset = 0;
+
+    // TODO: Handle sudden EOF everywhere.
+
+    //######################
+    //    PARSE HEADER
+    //######################
+
+    BlotterHeader* header = (BlotterHeader*)(data.ptr + 0);
+    BlotterFooter* footer = (BlotterFooter*)(data.ptr + data.len - 16);
+
+    if(memcmp(header->magic, "Logic World save", 16)) {
+        error("File '%s' is corrupt! (bad header)\n", source_path);
+        return nullptr;
+    }
+    if(memcmp((char*)footer, "redstone sux lol", 16)) {
+        error("File '%s' is corrupt! (bad footer)\n", source_path);
+        return nullptr;
+    }
+
+    if(header->save_format_version != 7) {
+        error("Can't handle save version %d. Only 7.\n", (int)header->save_format_version);
+        return nullptr;
+    }
+    
+    // nocheckin LOGGING
+    LOG("Game version: %d.%d.%d.%d\n", header->game_version[0], header->game_version[1], header->game_version[2], header->game_version[3]);
+
+    const char* save_type = "Unknown";
+    switch(header->save_type) {
+        case LW_SAVE_TYPE_WORLD: save_type = "World"; break;
+        case LW_SAVE_TYPE_SUBASSEMBLY: save_type = "Subassembly"; break;
+        default:
+            error("Expected save type 1 or 2 but got %d\n", (int)header->save_type);
+            return nullptr;
+    }
+    LOG("Save type: %s\n", save_type);
+
+    // nocheckin LOGGING
+    LOG("Num components: %d\n", header->num_components);
+    LOG("Num wires: %d\n", header->num_wires);
+
+    //####################################
+    //    PARSE VARIABLE LENGTH DATA
+    //####################################
+    int head = sizeof(BlotterHeader);
+
+    int num_mods = *(i32*)(data.ptr+head);
+    head += 4;
+
+    for(int mi=0;mi<num_mods;mi++) {
+        string name = decompose_blotter_string(&data, &head);
+        int version[4];
+        memcpy(version, data.ptr + head, 16);
+        head += 16; // skip version
+
+        // nocheckin
+        LOG("Mod %s, %d.%d.%d.%d\n", name.ptr, version[0], version[1], version[2], version[3]);
+    }
+
+    int num_component_ids = *(i32*)(data.ptr+head);
+    head+=4;
+
+    // TODO: We allocate a lot of memory here. Use Hash map instead, i have to implement one in C first ):
+    int component_map_size = 0x10000 * sizeof(string);
+    string* component_map = malloc(component_map_size);
+    memset(component_map, 0, component_map_size);
+
+    // nocheckin logging
+    LOG("Components ids (%d):\n", num_component_ids);
+    for(int ci=0;ci<num_component_ids;ci++) {
+        i16 component_id = *(i16*)(data.ptr+head);
+        head += 2;
+        
+        string name = decompose_blotter_string(&data, &head);
+
+        // nocheckin LOGGING
+        LOG("  %d %s\n", (int)component_id, name.ptr);
+
+        component_map[component_id] = name;
+    }
+
+    bool data_does_not_fit;
+
+    LOG("Components (%d):\n", header->num_components);
+    for(int ci=0;ci<header->num_components;ci++) {
+        
+        BlotterComponentHeader* component = (BlotterComponentHeader*)(data.ptr+head);
+        head += sizeof(BlotterComponentHeader);
+
+        int num_inputs = *(i32*)(data.ptr+head); 
+        head += 4;
+        int* inputs = (int*)(data.ptr+head); 
+        head += num_inputs * sizeof(int);
+
+        int num_outputs = *(i32*)(data.ptr+head); 
+        head += 4;
+        int* outputs = (int*)(data.ptr+head); 
+        head += num_outputs * sizeof(int);
+
+        int custom_size = *(i32*)(data.ptr+head); 
+        head += 4;
+        if(custom_size == -1)
+            custom_size = 0;
+        // TODO: Parse custom data?
+        char* custom_data = (char*)(data.ptr+head);
+        head += custom_size;
+
+        string comp_name = component_map[component->comp_id];
+
+        // nocheckin LOGGING
+        float pos[3] = {component->position[0]*0.001f, component->position[1]*0.001f, component->position[2]*0.001f};
+        LOG(" 0x%x: %s %.2f %.2f %.2f\n", ((int)((char*)component - data.ptr)), comp_name.ptr, pos[0], pos[1], pos[2]);
+        LOG("    addr/parent: %d, %d\n", component->addr, component->parent_addr);
+        if(custom_size) {
+            LOG("    custom data [0x%x - 0x%x] (%d)\n", (int)(custom_data - data.ptr), (int)(custom_data - data.ptr) + custom_size, custom_size);
+            if(equal(comp_name, "MHG.CircuitBoard")) {
+                BlotterCustomData_CircuitBoard* custom = (BlotterCustomData_CircuitBoard*)custom_data;
+                LOG("    RGB: %d, %d, %d\n", custom->red, custom->blue, custom->green);
+                LOG("    width/height: %d, %d\n", custom->width, custom->height);
+            } else if(equal(comp_name, "MHG.PanelLabel")) {
+                BlotterCustomData_PanelLabel* custom = (BlotterCustomData_PanelLabel*)custom_data;
+                LOG("    data0: %d\n", custom->_0);
+                LOG("    RGB: %d, %d, %d\n", custom->red, custom->blue, custom->green);
+                LOG("    data1: %x %x %x %x %x\n", custom->_1[0], custom->_1[1], custom->_1[2], custom->_1[3], custom->_1[4]);
+                int temp_head = sizeof(BlotterCustomData_PanelLabel);
+                string temp_data = { custom_size, custom_data };
+                string text = decompose_blotter_string(&temp_data, &temp_head);
+                int* nums = (int*)(custom_data + temp_head);
+                
+                LOG("    text: \"");
+                for(int i=0;i<text.len;i++) {
+                    char chr = text.ptr[i];
+                    if(chr == '\n') {
+                        LOG("\\n");
+                    } else if(chr < 32) {
+                        LOG("\\x%X%X", chr&0xF0, chr&0xF);
+                    } else {
+                        LOG("%c", chr);
+                    }
+                } LOG("\"\n");
+
+                LOG("    data2: %d, %d, %d\n", nums[0], nums[1], nums[2]);
+            } else  if(equal(comp_name, "MHG.Button")) {
+                BlotterCustomData_Button* custom = (BlotterCustomData_Button*)custom_data;
+                LOG("    RGB: %d %d %d\n", custom->red, custom->green, custom->blue);
+                LOG("    active: %d\n", custom->active);
+            } else  if(equal(comp_name, "MHG.PanelSwitch")) {
+                BlotterCustomData_Switch* custom = (BlotterCustomData_Switch*)custom_data;
+                // LOG("    custom data [0x%x - 0x%x] (%d)\n", (int)(custom_data - data.ptr), (int)(custom_data - data.ptr) + custom_size, custom_size);
+
+                // LOG("    RGB: %d %d %d\n", custom->red, custom->green, custom->blue);
+                // LOG("    active: %d\n", custom->active);
+                
+                // Here we insert the ROM data
+                printf("%d/8 < %d\n", bit_offset, bin_data.len);
+                if(bit_offset/8 < bin_data.len) {
+                    int bit = (bin_data.ptr[bit_offset/8] >> (bit_offset&7)) & 0x1;
+                    custom->active = bit;
+                    bit_offset += 1;
+                } else {
+                    // data_does_not_fit = true;
+                }
+
+                printf("Switch at %.2f, %.2f, %.2f : %d\n", pos[0], pos[1], pos[2], custom->active);
+            // } else  if(equal(comp_name, "MHG.Delayer")) {
+            //     BlotterCustomData_Delayer* custom = (BlotterCustomData_Delayer*)custom_data;
+            //     LOG("    data0: %x %x %x %x\n", custom->_0[0], custom->_0[1], custom->_0[2], custom->_0[3]);
+            //     LOG("    data1: %d\n", custom->_1);
+            } else {
+                LOG("    UNKNOWN\n");
+                LOG("    custom data [0x%x - 0x%x[\n", (int)(custom_data - data.ptr), (int)(custom_data - data.ptr) + custom_size);
+                LOG("    off: 0x%x\n", (int)(custom_data - data.ptr));
+                for(int i=0;i<custom_size;i++) {
+                    LOG("    0x%x %d\n", *(int*)(custom_data+i), *(int*)(custom_data+i));
+                    i+=3;
+                }
+            }
+        }
+    }
+    if(bit_offset < bin_data.len*8) {
+        warning("Binary data (instructions) do not fit in ROM (%s). Create a bigger ROM with %d more bytes.\n(%d bytes in total, %d switches)\n", source_path, bin_data.len - bit_offset/8, bin_data.len, bin_data.len*8);
+    }
+
+    LOG("Wires (%d):\n", header->num_wires);
+    for(int ci=0;ci<header->num_wires;ci++) {
+        BlotterWire* wire = (BlotterWire*)(data.ptr+head);
+        head += sizeof(BlotterWire);
+    }
+
+    if(header->save_type == LW_SAVE_TYPE_SUBASSEMBLY) {
+        int num_states = *(i32*)(data.ptr+head);
+        head += 4;
+        int* circuit_ids = (i32*)(data.ptr+head);
+        head += num_states * sizeof(int);
+
+        LOG("Circuit state ids (%d):\n", num_states);
+    } else if(header->save_type == LW_SAVE_TYPE_WORLD) {
+        int num_bytes = *(i32*)(data.ptr+head);
+        head += 4;
+        i8* state_data = (i8*)(data.ptr+head);
+        head += num_bytes;
+
+        LOG("Circuit states (%d):\n", num_bytes * 8);
+    } else Assert(false);
+
+    if(head != data.len-16) {
+        warning("%d bytes was not processed at the end '%s'.\n", data.len-16-head, source_path);
+    }
+
+    *rom_data = data;
+
     return true;
 }
 

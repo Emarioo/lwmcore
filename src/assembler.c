@@ -411,7 +411,7 @@ bool assemble(string text, Bin* bin, AssemblerInfo* info) {
                     parsed_chars = parse_int(&text, &head, &value);
                     if (parsed_chars) {
                         inst.imm = value;
-                        if(inst.opcode >= INST_SHL && inst.opcode <= INST_SHR && inst.imm < 0 || inst.imm > 15) {
+                        if(inst.opcode == INST_SHL && inst.opcode == INST_SHR && (inst.imm < 0 || inst.imm > 15)) {
                             ERROR_SRC_RET(location_head, "Immediate for shl/shr must be in the range (0-15)! (not %d)", inst.imm);
                         }
                     } else if (had_comma) {

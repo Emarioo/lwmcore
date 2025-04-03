@@ -3,6 +3,15 @@
 #include "lwmcore/emulator.h"
 #include "lwmcore/blotter.h"
 
+void print_help() {
+    printf("Usage: lwm sample.asm -o sample.bin\n");
+    printf("  -o <path>       : Path where to place output binary file.\n");
+    printf("  -e,--emulate    : Assembles and emulates the file.\n");
+    printf("  -r,--rom <path> : Assembles and writes a Logic World subassembly file.\n");
+    printf("  -f,--force      : Will overwrite user made subassembly.\n");
+    printf("  --safe          : Don't write any files, log which ones would have been written to.\n");
+}
+
 int main(int argc, const char** argv) {
     string assembly_file = {0};
     string bin_file = {0, nullptr};
@@ -14,36 +23,34 @@ int main(int argc, const char** argv) {
     for(int i=1;i<argc;i++) {
         const char* arg = argv[i];
         if(!strcmp(arg, "-h") || !strcmp(arg, "--help")) {
-            printf("Usage: lwm sample.asm -o sample.bin\n");
-            printf("  -o <path>       : Path where to place output binary file.\n");
-            printf("  -e,--emulate    : Assembles and emulates the file.\n");
-            printf("  -r,--rom <path> : Assembles and writes a Logic World subassembly file.\n");
-            printf("  -f,--force      : Will overwrite user made subassembly.\n");
+            print_help();
             return 0;
         } else if(!strcmp(arg, "-v") || !strcmp(arg, "--version")) {
             // TODO: Remove this at some point?
             time_t now = time(nullptr);
             srand(now);
-            float num = (float)rand() / RAND_MAX;
-            if(num < 0.2) {
+            float num = (float)rand() / (float)RAND_MAX;
+            if(num < 0.2f) {
                 // 20%
                 printf("Hello, no version for you this time.\n");
-            } else if(num < 0.5) {
+            } else if(num < 0.5f) {
                 // 30%
                 printf("Version is apparently v0.0.1\n");
-            } else if(num < 0.95) {
+            } else if(num < 0.95f) {
                 // 45%
                 printf("Hmm... I'll tell you the first two numbers: v0.0.?\n");
             } else {
                 // 5%
                 printf("The version is v0.0.1 (2025-03-30)\n");
-                printf("(you have a 5% chance of seeing this message)\n");
+                printf("(you have a 5%% chance of seeing this message)\n");
             }
             return 0;
         } else if(!strcmp(arg, "-e") || !strcmp(arg, "--emulate")) {
             do_emulate = true;
         } else if(!strcmp(arg, "-f") || !strcmp(arg, "--force")) {
             overwrite_user_subassembly = true;
+        } else if(!strcmp(arg, "--safe")) {
+            DISABLE_FILE_WRITES = true;
         } else if(!strcmp(arg, "-r") || !strcmp(arg, "--rom")) {
             if(i+1 >= argc) {
                 error("Missing argument after '%s'\n", arg);
@@ -71,6 +78,11 @@ int main(int argc, const char** argv) {
             assembly_file.len = strlen(arg);
             assembly_file.ptr = (char*)arg; // TODO: Don't cast like this. Temporarily discarding the warning.
         }
+    }
+
+    if(assembly_file.len == 0) {
+        print_help();
+        return 0;
     }
 
     #define IS_SUBASSEMBLY(P) endswith(P, ".logicworld") || endswith(P, ".partialworld") || endswith(P, ".lwsubassembly")
@@ -142,7 +154,7 @@ int main(int argc, const char** argv) {
         
         bool yes = modify_rom_subassembly(bin_data, &rom_data);
         if(!yes)
-        return 1; // error already printed
+            return 1; // error already printed
         
         if(IS_SUBASSEMBLY(rom_file)) {
             if(DISABLE_FILE_WRITES) {
@@ -158,15 +170,19 @@ int main(int argc, const char** argv) {
             }
         } else {
             int slash_index = find_string(rom_file, "/");
+            const char* title = nullptr;
             if(slash_index == -1) {
                 // TODO: Memory leak
                 char* tmp = malloc(500);
                 sprintf(tmp, "C:/Program Files (x86)/Steam/steamapps/common/Logic World/subassemblies/%s", rom_file.ptr);
                 rom_file.ptr = tmp;
                 rom_file.len = strlen(tmp);
+                title = rom_file.ptr + 75-2-1;
+            } else {
+                title = rom_file.ptr + slash_index + 1;
             }
 
-            bool yes = write_metadata(rom_file, "", overwrite_user_subassembly);
+            bool yes = write_metadata(rom_file, title, overwrite_user_subassembly);
             if(!yes)
                 return 1; // error already printed
 
@@ -207,3 +223,4 @@ int main(int argc, const char** argv) {
 
 // Declared in config.h
 bool DISABLE_FILE_WRITES = false;
+// bool DISABLE_FILE_WRITES = true;
