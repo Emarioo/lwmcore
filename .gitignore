@@ -1,6 +1,12 @@
 *.exe
-lwm
+*.dll
+*.lib
 *.o
 *.bin
+*.elf
+*.a
+*.so
+
 bin
+int
 sandbox
