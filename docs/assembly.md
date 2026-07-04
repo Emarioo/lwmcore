@@ -7,6 +7,27 @@ Use `lwm <in_path> -o <out_path>` to assemble file `in_path` and generate a bina
 
 The file extension of `in_path` and `out_path` should be `.asm` and `.bin` respectively.
 
+```bash
+
+# Assemble and run in emulator
+lwm main.s
+
+# Assemble and write raw binary to a file
+lwm main.s -o main.bin
+# Assemble and write logic world binary to a file
+lwm main.s -o main.partialworld
+
+# Run in emulator
+lwm main.bin
+
+# Run in emulator, loads kernel.bin at 0 and main.bin at 0x1000
+lwm kernel.bin --load=main.bin,0x1000
+
+# Physical memory of kernel
+lwm kernel.bin --load=main.bin,0x1000
+
+```
+
 ## Input and output
 The assembler parses a file of ASCII characters (unicode not supported) into a binary blob.
 

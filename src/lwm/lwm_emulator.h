@@ -32,6 +32,7 @@ typedef struct {
     #define crcause  crs[4]
     #define crfault  crs[5]
     #define crcpuid  crs[6]
+    #define crtimercmp  crs[7]
 
     uint64_t tickCounter;
 
@@ -39,12 +40,12 @@ typedef struct {
 
 
 typedef struct {
-
     uint64_t core_entry;
-
+    void*    rom;
+    int      rom_len;
 } PlatformConfig;
 
 
-#define CRSTATUS_USER        0x1
-#define CRSTATUS_PAGING      0x2
-#define CRSTATUS_INTERRUPT   0x4
+void emulator_start(PlatformConfig* config);
+
+void dump(PlatformConfig* config);

@@ -4,7 +4,24 @@
 #include <stdbool.h>
 
 
+#define LWM_REGNR_PC 32
+#define LWM_REGNR_SP 15
+#define LWM_REGNR_LR 14
+#define LWM_REGNR_TP 13
 
+#define LWM_REGNR_CRSTATUS     0
+#define LWM_REGNR_CRVB         1
+#define LWM_REGNR_CRPT         2
+#define LWM_REGNR_CREPC        3
+#define LWM_REGNR_CRCAUSE      4
+#define LWM_REGNR_CRFAULT      5
+#define LWM_REGNR_CRCPUID      6
+#define LWM_REGNR_CRTIMERCMP   7
+
+
+#define CRSTATUS_USER        0x1
+#define CRSTATUS_PAGING      0x2
+#define CRSTATUS_INTERRUPT   0x4
 
 // Instruction opcode numbers. Not strictly related to encoding
 enum OpcodeKind {
@@ -67,8 +84,6 @@ enum OpcodeKind {
     OPCODE_JCOND,
 
     // [ opcode 8 | reg 5 | reg 5 | reg 5 | disp8/16/32/64 ]
-
-    //
 
     OPCODE_LEA,
     OPCODE_LDB,

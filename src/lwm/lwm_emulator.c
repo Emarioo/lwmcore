@@ -48,18 +48,13 @@ inline void fault(EmulatorContext* emulator) {
     longjmp(emulator->loop_jmpbuf, 1);
 }
 
-#define FAULT_ILLEGAL_16_REG() do { \
-    fprintf("Exception ILLEGAL instruction at %zx. 16-bit mode, upper 16-bit register not available\n", pc); \
-    fault(emulator); \
-    } while (0)
-
 
 void check_registers(EmulatorContext* emulator, uint8_t* regs, int count) {
     uint64_t pc = emulator->coreState.pc;
     if (emulator->coreState.mode != MODE_16) {
         for (int i=0;i<count;i++) {
             if (regs[i] > 31) {
-                fprintf("Exception ILLEGAL instruction at %zx. Registers limited to 32 (found r%d)\n", pc, regs[i]);
+                fprintf(stderr, "Exception ILLEGAL instruction at %zx. Registers limited to 32 (found r%d)\n", pc, regs[i]);
                 fault(emulator);
                 return;
             }
@@ -67,7 +62,7 @@ void check_registers(EmulatorContext* emulator, uint8_t* regs, int count) {
     } else {
         for (int i=0;i<count;i++) {
             if (regs[i] > 15) {
-                fprintf("Exception ILLEGAL instruction at %zx. 16-bit mode, upper 16-bit register not available\n", pc);
+                fprintf(stderr, "Exception ILLEGAL instruction at %zx. 16-bit mode, upper 16-bit register not available\n", pc);
                 fault(emulator);
                 return;
             }
@@ -406,7 +401,7 @@ inline int decode_form_memory(EmulatorContext* emulator, uint64_t pc, uint32_t* 
 
 void emulator_step(EmulatorContext* emulator);
 
-void emulator_start(void) {
+void emulator_start(PlatformConfig* config) {
 
     EmulatorContext _ctx = {0};
     EmulatorContext* emulator = &_ctx;
@@ -866,4 +861,45 @@ void emulator_step(EmulatorContext* emulator) {
 
 
 
+
+
+char tohex(int x) {
+    if(x >= 0 && x <= 9)
+        return '0' + x;
+    if(x >= 10 && x <= 15)
+        return 'A' + x - 10;
+    return '0';
+}
+
+void dump(PlatformConfig* config) {
+    printf("Core entry: %zu\n", config->core_entry);
+    uint32_t* words = (uint32_t*)config->rom;
+    for(int i=0;i<config->rom_len/4;i++) {
+
+        uint32_t word = words[i];
+        printf(" 0x%x: ", i*4);
+
+        char c0 = tohex((word>>16)&0xF);
+        char c1 = tohex((word>>20)&0xF);
+        char c2 = tohex((word>>24)&0xF);
+        char c3 = tohex((word>>28)&0xF);
+        printf("%c%c %c%c ", c3, c2, c1, c0);
+        c0 = tohex((word>>0)&0xF);
+        c1 = tohex((word>>4)&0xF);
+        c2 = tohex((word>>8)&0xF);
+        c3 = tohex((word>>12)&0xF);
+        printf("%c%c %c%c ", c3, c2, c1, c0);
+
+        // int opcode = (word >> 8);
+        // if((opcode & 0x80) == 0) {
+        //     opcode = opcode >> 4;
+        // } else if((opcode & 0x80) == 1) {
+        //     opcode = opcode >> 3;
+        // }
+        // string name = get_opcode_name(opcode);
+        // printf("%s", name.ptr);
+
+        printf("\n");
+    }
+}
 

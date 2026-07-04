@@ -1,10 +1,10 @@
 
-#include "lwmcore/assembler.h"
-#include "lwmcore/emulator.h"
-#include "lwmcore/blotter.h"
+#include "lwm/lwm_assembler.h"
+#include "lwm/lwm_emulator.h"
+#include "lwm/blotter.h"
 
 void print_help() {
-    printf("Usage: lwm sample.asm -o sample.bin\n");
+    printf("Usage: lwm sample.s -o sample.bin\n");
     printf("  -o <path>       : Path where to place output binary file.\n");
     printf("  -e,--emulate    : Assembles and emulates the file.\n");
     printf("  -r,--rom <path> : Assembles and writes a Logic World subassembly file.\n");
@@ -42,7 +42,6 @@ int main(int argc, const char** argv) {
             } else {
                 // 5%
                 printf("The version is v0.0.1 (2025-03-30)\n");
-                printf("(you have a 5%% chance of seeing this message)\n");
             }
             return 0;
         } else if(!strcmp(arg, "-e") || !strcmp(arg, "--emulate")) {
@@ -87,7 +86,7 @@ int main(int argc, const char** argv) {
 
     #define IS_SUBASSEMBLY(P) endswith(P, ".logicworld") || endswith(P, ".partialworld") || endswith(P, ".lwsubassembly")
 
-    bool file_is_asm = endswith(assembly_file, ".asm");
+    bool file_is_asm = endswith(assembly_file, ".asm") || endswith(assembly_file, ".s") || endswith(assembly_file, ".S");
     bool file_is_bin = endswith(assembly_file, ".bin");
     bool file_is_subassembly = IS_SUBASSEMBLY(assembly_file);
 
@@ -111,17 +110,22 @@ int main(int argc, const char** argv) {
         fseek(file, 0, SEEK_END);
         buffer.len = ftell(file);
         fseek(file, 0, SEEK_SET);
-        buffer.ptr = (char*)malloc(buffer.len);
+        buffer.ptr = (char*)malloc(buffer.len + 1);
         fread(buffer.ptr, 1, buffer.len, file);
         fclose(file);
+        buffer.ptr[buffer.len] = 0;
         
-        AssemblerInfo* info = (AssemblerInfo*)malloc(sizeof(AssemblerInfo));
-        memset(info, 0, sizeof(*info));
-        info->source_file = assembly_file;
-        bool res = assemble(buffer, &bin, info);
-        if(!res)
-            return 1;
+        AssemblerOptions options = {0};
+        options.sourcePath = assembly_file.ptr;
+        if (bin_file.len) {
+            options.outputPath = bin_file.ptr;
+        } else {
+            options.outputPath = "temp.bin";
+        }
+        AssemblerError result = assemble(buffer.ptr, buffer.len, &options);
 
+        PlatformConfig config = {0};
+        config.rom = 
         dump(bin);
     } else if(file_is_bin) {
         FILE* file = fopen(assembly_file.ptr, "rb");
@@ -143,9 +147,12 @@ int main(int argc, const char** argv) {
     }
 
     if (do_emulate) {
-        EmulatorInfo* info = (EmulatorInfo*)malloc(sizeof(EmulatorInfo));
-        memset(info, 0, sizeof(*info));
-        emulate(bin, info);
+
+        PlatformConfig config = {0};
+        config.core_entry = 0;
+        config.rom        = bin.ptr;
+        config.rom_len    = bin.len;
+        emulator_start(&config);
     }
 
     if (do_rom) {

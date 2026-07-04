@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include "lwmcore/util.h"
+#include "lwm/util.h"
 
 #pragma pack(push, 1)
 typedef struct {

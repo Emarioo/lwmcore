@@ -1,4 +1,4 @@
-#include "lwmcore/blotter.h"
+#include "lwm/blotter.h"
 
 //###########################
 //     PUBLIC FUNCTIONS
@@ -266,16 +266,16 @@ void write_subassembly() {
         const char* name;
     } Comp;
     Comp components[] = {
-        0,  "MHG.Switch",
-        2,  "MHG.Button",
-        6,  "MHG.Inverter",
-        8,  "MHG.AndGate",
-        9,  "MHG.Delayer",
-        10, "MHG.DLatch",
-        19, "MHG.CircuitBoard",
-        21, "MHG.Peg",
-        25, "MHG.ChubbySocket",
-        28, "MHG.PanelLabel",
+        { 0,  "MHG.Switch" },
+        { 2,  "MHG.Button" },
+        { 6,  "MHG.Inverter" },
+        { 8,  "MHG.AndGate" },
+        { 9,  "MHG.Delayer" },
+        { 10, "MHG.DLatch" },
+        { 19, "MHG.CircuitBoard" },
+        { 21, "MHG.Peg" },
+        { 25, "MHG.ChubbySocket" },
+        { 28, "MHG.PanelLabel" },
     };
     int comp_len = sizeof(components)/sizeof(*components);
     

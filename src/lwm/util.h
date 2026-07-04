@@ -6,6 +6,8 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <time.h>
+#include <stdarg.h>
+#include <setjmp.h>
 
 typedef uint8_t  u8;
 typedef uint16_t u16;

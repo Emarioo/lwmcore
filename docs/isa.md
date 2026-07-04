@@ -183,9 +183,13 @@ setupKeyboard:
 ```
 
 
-# Tick Counter
+# Tick Counter and Timer
 
 The tick counter is a 64-bit, monotonic, fixed frequency counter. It cannot be modified during execution. Only a computer reboot will reset it.
+The tick unit does not represent a cycle.
+
+The timer is a compare operation that continously compares a target value to the tick counter which triggers an interrupt when reached.
+If you know the frequency of the tick counter then you can set a target such that after 10ms and interrupt is triggered.
 
 The tick counter is read in one atomic instruction which is important for 16-bit and 32-bit CPUs which require two or more registers. There are three operand encodings for each bit width.
 
@@ -203,6 +207,17 @@ rdtick r1, r2, r3, r4
 # r3 = bits 47:32
 # r4 = bits 63:48
 ```
+
+The timer's compare value is set through a control register.
+
+```arm
+#define TICKS_PER_MS 1000000 // should be measured or retrieved from firmware or cpufeat?
+
+rdtick r0
+add r0, 10 * TICKS_PER_MS
+mtcr CRTIMERCMP, r0
+```
+
 
 # Booting and Multicore
 
@@ -372,6 +387,7 @@ Note that 16-bit CPU only has 16 registers.
 | CRCAUSE | Exception/interrupt cause |
 | CRFAULT | Faulting address |
 | CRCPUID | Current CPU ID |
+| CRTIMERCMP | Timer Compare Target |
 
 
 # Instructions
