@@ -1,0 +1,414 @@
+Total opcode bits: 1361 (avg 6.77)
+Total unused bits: 630 (avg 3.13)
+Fields[5]
+ reg 5
+ imm8 8
+ imm16 16
+ imm32 32
+ imm64 64
+Priorities[2]
+ COMMON 1
+ RARE -1
+Instructions[201]
+ li8  reg imm8 prio=COMMON
+   1 13 0fffffffffffffuu
+ li16  reg imm16 prio=COMMON
+   2 21 10fffffffffffffffffffffu
+ li32  reg imm32
+   7 37 1001111fffffffffffffffffffffffffffffffffffffuuuu
+ li64  reg imm64
+   7 69 0101111fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffuuuu
+ call_reg  reg
+   7 5 1101111fffffuuuu
+ jmp_reg  reg
+   7 5 0011111fffffuuuu
+ push  reg prio=COMMON
+   2 5 01fffffu
+ pop  reg prio=COMMON
+   3 5 110fffff
+ tlbflush  reg prio=RARE
+   7 5 1111101fffffuuuu
+ not  reg reg
+   7 10 1011111ffffffffffuuuuuuu
+ mfcr  reg reg prio=RARE
+   7 10 0000011ffffffffffuuuuuuu
+ mtcr  reg reg prio=RARE
+   7 10 1000011ffffffffffuuuuuuu
+ cpufeat  reg reg prio=RARE
+   7 10 0100011ffffffffffuuuuuuu
+ add  reg reg reg prio=COMMON
+   3 15 001fffffffffffffffuuuuuu
+ sub  reg reg reg prio=COMMON
+   3 15 101fffffffffffffffuuuuuu
+ umul  reg reg reg
+   7 15 0111111fffffffffffffffuu
+ udiv  reg reg reg
+   8 15 11111110fffffffffffffffu
+ umod  reg reg reg
+   8 15 00000001fffffffffffffffu
+ smul  reg reg reg
+   8 15 10000001fffffffffffffffu
+ sdiv  reg reg reg
+   8 15 01000001fffffffffffffffu
+ smod  reg reg reg
+   8 15 11000001fffffffffffffffu
+ and  reg reg reg
+   8 15 00100001fffffffffffffffu
+ or  reg reg reg prio=COMMON
+   3 15 011fffffffffffffffuuuuuu
+ xor  reg reg reg
+   8 15 10100001fffffffffffffffu
+ shl  reg reg reg
+   8 15 01100001fffffffffffffffu
+ shr  reg reg reg
+   8 15 11100001fffffffffffffffu
+ jmp8  imm8 prio=COMMON
+   4 8 1110ffffffffuuuu
+ jmp16  imm16 prio=COMMON
+   4 16 0001ffffffffffffffffuuuu
+ jmp32  imm32
+   8 32 00010001ffffffffffffffffffffffffffffffff
+ call8  imm8 prio=COMMON
+   4 8 1001ffffffffuuuu
+ call16  imm16 prio=COMMON
+   4 16 0101ffffffffffffffffuuuu
+ call32  imm32
+   8 32 10010001ffffffffffffffffffffffffffffffff
+ ret 
+   8 0 01010001
+ syscall  prio=RARE
+   7 0 1100011u
+ vret  prio=RARE
+   7 0 0010011u
+ dbg 
+   8 0 11010001
+ eint  prio=RARE
+   7 0 1010011u
+ dint  prio=RARE
+   7 0 0110011u
+ slow  prio=RARE
+   7 0 1110011u
+ wfi  prio=RARE
+   7 0 0001011u
+ nop 
+   8 0 00110001
+ vmstart  prio=RARE
+   7 0 1001011u
+ jz8  reg imm8 prio=COMMON
+   4 13 1101fffffffffffffuuuuuuu
+ jz16  reg imm16 prio=COMMON
+   4 21 0011fffffffffffffffffffffuuuuuuu
+ jz32  reg imm32
+   8 37 10110001fffffffffffffffffffffffffffffffffffffuuu
+ jnz8  reg imm8 prio=COMMON
+   4 13 1011fffffffffffffuuuuuuu
+ jnz16  reg imm16 prio=COMMON
+   4 21 0111fffffffffffffffffffffuuuuuuu
+ jnz32  reg imm32
+   8 37 01110001fffffffffffffffffffffffffffffffffffffuuu
+ jeq8  reg reg imm8 prio=COMMON
+   5 18 11110ffffffffffffffffffu
+ jeq16  reg reg imm16 prio=COMMON
+   5 26 00001ffffffffffffffffffffffffffu
+ jeq32  reg reg imm32
+   8 42 11110001ffffffffffffffffffffffffffffffffffffffffffuuuuuu
+ jne8  reg reg imm8 prio=COMMON
+   5 18 10001ffffffffffffffffffu
+ jne16  reg reg imm16 prio=COMMON
+   5 26 01001ffffffffffffffffffffffffffu
+ jne32  reg reg imm32
+   8 42 00001001ffffffffffffffffffffffffffffffffffffffffffuuuuuu
+ jlt8  reg reg imm8 prio=COMMON
+   5 18 11001ffffffffffffffffffu
+ jlt16  reg reg imm16 prio=COMMON
+   5 26 00101ffffffffffffffffffffffffffu
+ jlt32  reg reg imm32
+   8 42 10001001ffffffffffffffffffffffffffffffffffffffffffuuuuuu
+ jle8  reg reg imm8 prio=COMMON
+   5 18 10101ffffffffffffffffffu
+ jle16  reg reg imm16 prio=COMMON
+   5 26 01101ffffffffffffffffffffffffffu
+ jle32  reg reg imm32
+   8 42 01001001ffffffffffffffffffffffffffffffffffffffffffuuuuuu
+ jgt8  reg reg imm8 prio=COMMON
+   5 18 11101ffffffffffffffffffu
+ jgt16  reg reg imm16 prio=COMMON
+   5 26 00011ffffffffffffffffffffffffffu
+ jgt32  reg reg imm32
+   8 42 11001001ffffffffffffffffffffffffffffffffffffffffffuuuuuu
+ jge8  reg reg imm8 prio=COMMON
+   5 18 10011ffffffffffffffffffu
+ jge16  reg reg imm16 prio=COMMON
+   5 26 01011ffffffffffffffffffffffffffu
+ jge32  reg reg imm32
+   8 42 00101001ffffffffffffffffffffffffffffffffffffffffffuuuuuu
+ ja8  reg reg imm8 prio=COMMON
+   5 18 11011ffffffffffffffffffu
+ ja16  reg reg imm16 prio=COMMON
+   5 26 00111ffffffffffffffffffffffffffu
+ ja32  reg reg imm32
+   8 42 10101001ffffffffffffffffffffffffffffffffffffffffffuuuuuu
+ jae8  reg reg imm8 prio=COMMON
+   5 18 10111ffffffffffffffffffu
+ jae16  reg reg imm16 prio=COMMON
+   5 26 01111ffffffffffffffffffffffffffu
+ jae32  reg reg imm32
+   8 42 01101001ffffffffffffffffffffffffffffffffffffffffffuuuuuu
+ jb8  reg reg imm8 prio=COMMON
+   6 18 111110ffffffffffffffffff
+ jb16  reg reg imm16 prio=COMMON
+   6 26 000001ffffffffffffffffffffffffff
+ jb32  reg reg imm32
+   8 42 11101001ffffffffffffffffffffffffffffffffffffffffffuuuuuu
+ jbe8  reg reg imm8 prio=COMMON
+   6 18 100001ffffffffffffffffff
+ jbe16  reg reg imm16 prio=COMMON
+   6 26 010001ffffffffffffffffffffffffff
+ jbe32  reg reg imm32
+   8 42 00011001ffffffffffffffffffffffffffffffffffffffffffuuuuuu
+ lea_abs16  reg imm16
+   8 21 10011001fffffffffffffffffffffuuu
+ lea_abs32  reg imm32
+   8 37 01011001fffffffffffffffffffffffffffffffffffffuuu
+ lea_abs64  reg imm64 prio=RARE
+   7 69 0101011fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffuuuu
+ lea_reg_disp8  reg reg imm8 prio=COMMON
+   6 18 110001ffffffffffffffffff
+ lea_reg_disp16  reg reg imm16 prio=COMMON
+   6 26 001001ffffffffffffffffffffffffff
+ lea_reg_disp32  reg reg imm32
+   8 42 11011001ffffffffffffffffffffffffffffffffffffffffffuuuuuu
+ lea_reg2_disp8  reg reg reg imm8 prio=COMMON
+   6 23 101001fffffffffffffffffffffffuuu
+ lea_reg2_disp16  reg reg reg imm16 prio=COMMON
+   6 31 011001fffffffffffffffffffffffffffffffuuu
+ lea_reg2_disp32  reg reg reg imm32
+   8 47 00111001fffffffffffffffffffffffffffffffffffffffffffffffu
+ lea_pc_disp32  reg imm32 prio=COMMON
+   6 37 111001fffffffffffffffffffffffffffffffffffffuuuuu
+ ldb_abs16  reg imm16
+   8 21 10111001fffffffffffffffffffffuuu
+ ldb_abs32  reg imm32
+   8 37 01111001fffffffffffffffffffffffffffffffffffffuuu
+ ldb_abs64  reg imm64 prio=RARE
+   7 69 1101011fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffuuuu
+ ldb_reg_disp8  reg reg imm8 prio=COMMON
+   6 18 000101ffffffffffffffffff
+ ldb_reg_disp16  reg reg imm16 prio=COMMON
+   6 26 100101ffffffffffffffffffffffffff
+ ldb_reg_disp32  reg reg imm32
+   8 42 11111001ffffffffffffffffffffffffffffffffffffffffffuuuuuu
+ ldb_reg2_disp8  reg reg reg imm8 prio=COMMON
+   6 23 010101fffffffffffffffffffffffuuu
+ ldb_reg2_disp16  reg reg reg imm16 prio=COMMON
+   6 31 110101fffffffffffffffffffffffffffffffuuu
+ ldb_reg2_disp32  reg reg reg imm32
+   8 47 00000101fffffffffffffffffffffffffffffffffffffffffffffffu
+ ldb_pc_disp32  reg imm32 prio=COMMON
+   6 37 001101fffffffffffffffffffffffffffffffffffffuuuuu
+ ldbs_abs16  reg imm16
+   8 21 10000101fffffffffffffffffffffuuu
+ ldbs_abs32  reg imm32
+   8 37 01000101fffffffffffffffffffffffffffffffffffffuuu
+ ldbs_abs64  reg imm64 prio=RARE
+   7 69 0011011fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffuuuu
+ ldbs_reg_disp8  reg reg imm8 prio=COMMON
+   6 18 101101ffffffffffffffffff
+ ldbs_reg_disp16  reg reg imm16 prio=COMMON
+   6 26 011101ffffffffffffffffffffffffff
+ ldbs_reg_disp32  reg reg imm32
+   8 42 11000101ffffffffffffffffffffffffffffffffffffffffffuuuuuu
+ ldbs_reg2_disp8  reg reg reg imm8 prio=COMMON
+   6 23 111101fffffffffffffffffffffffuuu
+ ldbs_reg2_disp16  reg reg reg imm16 prio=COMMON
+   6 31 000011fffffffffffffffffffffffffffffffuuu
+ ldbs_reg2_disp32  reg reg reg imm32
+   8 47 00100101fffffffffffffffffffffffffffffffffffffffffffffffu
+ ldbs_pc_disp32  reg imm32 prio=COMMON
+   6 37 100011fffffffffffffffffffffffffffffffffffffuuuuu
+ ldh_abs16  reg imm16
+   8 21 10100101fffffffffffffffffffffuuu
+ ldh_abs32  reg imm32
+   8 37 01100101fffffffffffffffffffffffffffffffffffffuuu
+ ldh_abs64  reg imm64 prio=RARE
+   7 69 1011011fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffuuuu
+ ldh_reg_disp8  reg reg imm8 prio=COMMON
+   6 18 010011ffffffffffffffffff
+ ldh_reg_disp16  reg reg imm16 prio=COMMON
+   6 26 110011ffffffffffffffffffffffffff
+ ldh_reg_disp32  reg reg imm32
+   8 42 11100101ffffffffffffffffffffffffffffffffffffffffffuuuuuu
+ ldh_reg2_disp8  reg reg reg imm8 prio=COMMON
+   6 23 001011fffffffffffffffffffffffuuu
+ ldh_reg2_disp16  reg reg reg imm16 prio=COMMON
+   6 31 101011fffffffffffffffffffffffffffffffuuu
+ ldh_reg2_disp32  reg reg reg imm32
+   8 47 00010101fffffffffffffffffffffffffffffffffffffffffffffffu
+ ldh_pc_disp32  reg imm32 prio=COMMON
+   6 37 011011fffffffffffffffffffffffffffffffffffffuuuuu
+ ldhs_abs16  reg imm16
+   8 21 10010101fffffffffffffffffffffuuu
+ ldhs_abs32  reg imm32
+   8 37 01010101fffffffffffffffffffffffffffffffffffffuuu
+ ldhs_abs64  reg imm64 prio=RARE
+   7 69 0111011fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffuuuu
+ ldhs_reg_disp8  reg reg imm8 prio=COMMON
+   6 18 111011ffffffffffffffffff
+ ldhs_reg_disp16  reg reg imm16 prio=COMMON
+   6 26 000111ffffffffffffffffffffffffff
+ ldhs_reg_disp32  reg reg imm32
+   8 42 11010101ffffffffffffffffffffffffffffffffffffffffffuuuuuu
+ ldhs_reg2_disp8  reg reg reg imm8 prio=COMMON
+   6 23 100111fffffffffffffffffffffffuuu
+ ldhs_reg2_disp16  reg reg reg imm16 prio=COMMON
+   6 31 010111fffffffffffffffffffffffffffffffuuu
+ ldhs_reg2_disp32  reg reg reg imm32
+   8 47 00110101fffffffffffffffffffffffffffffffffffffffffffffffu
+ ldhs_pc_disp32  reg imm32 prio=COMMON
+   6 37 110111fffffffffffffffffffffffffffffffffffffuuuuu
+ ldl_abs16  reg imm16
+   8 21 10110101fffffffffffffffffffffuuu
+ ldl_abs32  reg imm32
+   8 37 01110101fffffffffffffffffffffffffffffffffffffuuu
+ ldl_abs64  reg imm64 prio=RARE
+   7 69 1111011fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffuuuu
+ ldl_reg_disp8  reg reg imm8 prio=COMMON
+   6 18 001111ffffffffffffffffff
+ ldl_reg_disp16  reg reg imm16 prio=COMMON
+   6 26 101111ffffffffffffffffffffffffff
+ ldl_reg_disp32  reg reg imm32
+   8 42 11110101ffffffffffffffffffffffffffffffffffffffffffuuuuuu
+ ldl_reg2_disp8  reg reg reg imm8 prio=COMMON
+   6 23 011111fffffffffffffffffffffffuuu
+ ldl_reg2_disp16  reg reg reg imm16 prio=COMMON
+   7 31 1111110fffffffffffffffffffffffffffffffuu
+ ldl_reg2_disp32  reg reg reg imm32
+   8 47 00001101fffffffffffffffffffffffffffffffffffffffffffffffu
+ ldl_pc_disp32  reg imm32 prio=COMMON
+   7 37 0000001fffffffffffffffffffffffffffffffffffffuuuu
+ ldls_abs16  reg imm16
+   8 21 10001101fffffffffffffffffffffuuu
+ ldls_abs32  reg imm32
+   8 37 01001101fffffffffffffffffffffffffffffffffffffuuu
+ ldls_abs64  reg imm64 prio=RARE
+   7 69 0000111fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffuuuu
+ ldls_reg_disp8  reg reg imm8 prio=COMMON
+   7 18 1000001ffffffffffffffffffuuuuuuu
+ ldls_reg_disp16  reg reg imm16 prio=COMMON
+   7 26 0100001ffffffffffffffffffffffffffuuuuuuu
+ ldls_reg_disp32  reg reg imm32
+   8 42 11001101ffffffffffffffffffffffffffffffffffffffffffuuuuuu
+ ldls_reg2_disp8  reg reg reg imm8 prio=COMMON
+   7 23 1100001fffffffffffffffffffffffuu
+ ldls_reg2_disp16  reg reg reg imm16 prio=COMMON
+   7 31 0010001fffffffffffffffffffffffffffffffuu
+ ldls_reg2_disp32  reg reg reg imm32
+   8 47 00101101fffffffffffffffffffffffffffffffffffffffffffffffu
+ ldls_pc_disp32  reg imm32 prio=COMMON
+   7 37 1010001fffffffffffffffffffffffffffffffffffffuuuu
+ ldq_abs16  reg imm16
+   8 21 10101101fffffffffffffffffffffuuu
+ ldq_abs32  reg imm32
+   8 37 01101101fffffffffffffffffffffffffffffffffffffuuu
+ ldq_abs64  reg imm64 prio=RARE
+   7 69 1000111fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffuuuu
+ ldq_reg_disp8  reg reg imm8 prio=COMMON
+   7 18 0110001ffffffffffffffffffuuuuuuu
+ ldq_reg_disp16  reg reg imm16 prio=COMMON
+   7 26 1110001ffffffffffffffffffffffffffuuuuuuu
+ ldq_reg_disp32  reg reg imm32
+   8 42 11101101ffffffffffffffffffffffffffffffffffffffffffuuuuuu
+ ldq_reg2_disp8  reg reg reg imm8 prio=COMMON
+   7 23 0001001fffffffffffffffffffffffuu
+ ldq_reg2_disp16  reg reg reg imm16 prio=COMMON
+   7 31 1001001fffffffffffffffffffffffffffffffuu
+ ldq_reg2_disp32  reg reg reg imm32
+   8 47 00011101fffffffffffffffffffffffffffffffffffffffffffffffu
+ ldq_pc_disp32  reg imm32 prio=COMMON
+   7 37 0101001fffffffffffffffffffffffffffffffffffffuuuu
+ stb_abs16  reg imm16
+   8 21 10011101fffffffffffffffffffffuuu
+ stb_abs32  reg imm32
+   8 37 01011101fffffffffffffffffffffffffffffffffffffuuu
+ stb_abs64  reg imm64 prio=RARE
+   7 69 0100111fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffuuuu
+ stb_reg_disp8  reg reg imm8 prio=COMMON
+   7 18 1101001ffffffffffffffffffuuuuuuu
+ stb_reg_disp16  reg reg imm16 prio=COMMON
+   7 26 0011001ffffffffffffffffffffffffffuuuuuuu
+ stb_reg_disp32  reg reg imm32
+   8 42 11011101ffffffffffffffffffffffffffffffffffffffffffuuuuuu
+ stb_reg2_disp8  reg reg reg imm8 prio=COMMON
+   7 23 1011001fffffffffffffffffffffffuu
+ stb_reg2_disp16  reg reg reg imm16 prio=COMMON
+   7 31 0111001fffffffffffffffffffffffffffffffuu
+ stb_reg2_disp32  reg reg reg imm32
+   8 47 00111101fffffffffffffffffffffffffffffffffffffffffffffffu
+ stb_pc_disp32  reg imm32 prio=COMMON
+   7 37 1111001fffffffffffffffffffffffffffffffffffffuuuu
+ sth_abs16  reg imm16
+   8 21 10111101fffffffffffffffffffffuuu
+ sth_abs32  reg imm32
+   8 37 01111101fffffffffffffffffffffffffffffffffffffuuu
+ sth_abs64  reg imm64 prio=RARE
+   7 69 1100111fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffuuuu
+ sth_reg_disp8  reg reg imm8 prio=COMMON
+   7 18 0000101ffffffffffffffffffuuuuuuu
+ sth_reg_disp16  reg reg imm16 prio=COMMON
+   7 26 1000101ffffffffffffffffffffffffffuuuuuuu
+ sth_reg_disp32  reg reg imm32
+   8 42 11111101ffffffffffffffffffffffffffffffffffffffffffuuuuuu
+ sth_reg2_disp8  reg reg reg imm8 prio=COMMON
+   7 23 0100101fffffffffffffffffffffffuu
+ sth_reg2_disp16  reg reg reg imm16 prio=COMMON
+   7 31 1100101fffffffffffffffffffffffffffffffuu
+ sth_reg2_disp32  reg reg reg imm32
+   8 47 00000011fffffffffffffffffffffffffffffffffffffffffffffffu
+ sth_pc_disp32  reg imm32 prio=COMMON
+   7 37 0010101fffffffffffffffffffffffffffffffffffffuuuu
+ stl_abs16  reg imm16
+   8 21 10000011fffffffffffffffffffffuuu
+ stl_abs32  reg imm32
+   8 37 01000011fffffffffffffffffffffffffffffffffffffuuu
+ stl_abs64  reg imm64 prio=RARE
+   7 69 0010111fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffuuuu
+ stl_reg_disp8  reg reg imm8 prio=COMMON
+   7 18 1010101ffffffffffffffffffuuuuuuu
+ stl_reg_disp16  reg reg imm16 prio=COMMON
+   7 26 0110101ffffffffffffffffffffffffffuuuuuuu
+ stl_reg_disp32  reg reg imm32
+   8 42 11000011ffffffffffffffffffffffffffffffffffffffffffuuuuuu
+ stl_reg2_disp8  reg reg reg imm8 prio=COMMON
+   7 23 1110101fffffffffffffffffffffffuu
+ stl_reg2_disp16  reg reg reg imm16 prio=COMMON
+   7 31 0001101fffffffffffffffffffffffffffffffuu
+ stl_reg2_disp32  reg reg reg imm32
+   8 47 00100011fffffffffffffffffffffffffffffffffffffffffffffffu
+ stl_pc_disp32  reg imm32 prio=COMMON
+   7 37 1001101fffffffffffffffffffffffffffffffffffffuuuu
+ stq_abs16  reg imm16
+   8 21 10100011fffffffffffffffffffffuuu
+ stq_abs32  reg imm32
+   8 37 01100011fffffffffffffffffffffffffffffffffffffuuu
+ stq_abs64  reg imm64 prio=RARE
+   7 69 1010111fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffuuuu
+ stq_reg_disp8  reg reg imm8 prio=COMMON
+   7 18 0101101ffffffffffffffffffuuuuuuu
+ stq_reg_disp16  reg reg imm16 prio=COMMON
+   7 26 1101101ffffffffffffffffffffffffffuuuuuuu
+ stq_reg_disp32  reg reg imm32
+   8 42 11100011ffffffffffffffffffffffffffffffffffffffffffuuuuuu
+ stq_reg2_disp8  reg reg reg imm8 prio=COMMON
+   7 23 0011101fffffffffffffffffffffffuu
+ stq_reg2_disp16  reg reg reg imm16 prio=COMMON
+   7 31 1011101fffffffffffffffffffffffffffffffuu
+ stq_reg2_disp32  reg reg reg imm32
+   8 47 00010011fffffffffffffffffffffffffffffffffffffffffffffffu
+ stq_pc_disp32  reg imm32 prio=COMMON
+   7 37 0111101fffffffffffffffffffffffffffffffffffffuuuu
+ rdtick  reg prio=RARE
+   7 5 0110111fffffuuuu
+ rdtick1  reg reg prio=RARE
+   7 10 1110111ffffffffffuuuuuuu
+ rdtick2  reg reg reg reg prio=RARE
+   7 20 0001111ffffffffffffffffffffuuuuu

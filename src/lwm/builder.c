@@ -13,11 +13,12 @@ void builder_init(Builder* builder) {
     builder->byteStream = malloc(builder->byteStream_max);
 }
 
-void builder_init_stream(Builder* builder, void* ptr, size_t length, size_t max) {
-    builder->byteStream_len = length;
+void builder_init_stream(Builder* builder, void* ptr, size_t head, size_t max) {
+    builder->byteStream_len = head;
     builder->byteStream_max = max;
     builder->byteStream = ptr;
 }
+
 
 
 #define APPEND_BYTES(bytes)                                         \
@@ -361,18 +362,54 @@ void emit_memop(Builder* builder, MemoryInstructionKind kind, AddressingForm for
 }
 
 
-// void emit_jmp(Builder* builder, int32_t** relative) {
-//     uint8_t bytes[] = {
-//         OPCODE_JMP,
-//         0,
-//     };
-//     APPEND_BYTES(bytes)
-
-//     *relative = &builder->byteStream[builder->byteStream_len-1];
-// }
-// void emit_call(Builder* builder, int32_t** relative) {
-
-// }
+void emit_jmp8(Builder* builder, uint64_t* fixup) {
+    uint8_t bytes[] = {
+        OPCODE_JMP,
+        0,
+    };
+    APPEND_BYTES(bytes)
+    *fixup = builder->byteStream_len - 1;
+}
+void emit_jmp16(Builder* builder, uint64_t* fixup) {
+    uint8_t bytes[] = {
+        OPCODE_JMP,
+        0, 0
+    };
+    APPEND_BYTES(bytes)
+    *fixup = builder->byteStream_len - 1;
+}
+void emit_jmp32(Builder* builder, uint64_t* fixup) {
+    uint8_t bytes[] = {
+        OPCODE_JMP,
+        0, 0, 0, 0
+    };
+    APPEND_BYTES(bytes)
+    *fixup = builder->byteStream_len - 1;
+}
+void emit_call8(Builder* builder, uint64_t* fixup) {
+    uint8_t bytes[] = {
+        OPCODE_CALL,
+        0,
+    };
+    APPEND_BYTES(bytes)
+    *fixup = builder->byteStream_len - 1;
+}
+void emit_call16(Builder* builder, uint64_t* fixup) {
+    uint8_t bytes[] = {
+        OPCODE_CALL,
+        0, 0
+    };
+    APPEND_BYTES(bytes)
+    *fixup = builder->byteStream_len - 1;
+}
+void emit_call32(Builder* builder, uint64_t* fixup) {
+    uint8_t bytes[] = {
+        OPCODE_CALL,
+        0, 0, 0, 0
+    };
+    APPEND_BYTES(bytes)
+    *fixup = builder->byteStream_len - 1;
+}
 // void emit_jz(Builder* builder, int reg0, int32_t** relative);
 // void emit_jnz(Builder* builder, int reg0, int32_t** relative);
 

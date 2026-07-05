@@ -24,7 +24,7 @@
 #define CRSTATUS_INTERRUPT   0x4
 
 // Instruction opcode numbers. Not strictly related to encoding
-enum OpcodeKind {
+typedef enum {
     
     // [ opcode 3 | reg 5 | immediate ]
     OPCODE_LI8,
@@ -34,6 +34,9 @@ enum OpcodeKind {
     // [ opcode 3 | reg 5 ]
     OPCODE_CALL_REG,
     OPCODE_JMP_REG,
+    OPCODE_PUSH,
+    OPCODE_POP,
+    OPCODE_TLBFLUSH,
 
     // [ opcode 6 | reg 5 | reg 5 ]
     OPCODE_NOT,
@@ -75,6 +78,7 @@ enum OpcodeKind {
     OPCODE_SLOW,
     OPCODE_WFI,
     OPCODE_NOP,
+    OPCODE_VMSTART,
 
     // [ opcode 8 | flags 3 | reg 5 | relative8/16/32 ]
     OPCODE_JZ,
@@ -99,17 +103,12 @@ enum OpcodeKind {
     OPCODE_STQ,
 
     
-    OPCODE_PUSH,
-    OPCODE_POP,
 
     // Special instructions
     OPCODE_RDTICK,
     OPCODE_RDTICK1,
     OPCODE_RDTICK2,
-    OPCODE_TLBFLUSH,
-
-    OPCODE_VMSTART,
-};
+} OpcodeKind;
 
 typedef enum {
     COND_EQ,
@@ -138,3 +137,8 @@ typedef enum {
     ADDRESSING_PC_DISP32,
 } AddressingForm;
 
+
+int largest_encoding(int opcode, AddressingForm form);
+
+void gpr_to_string(int reg, char regname[20]);
+void cr_to_string(int reg, char regname[20]);

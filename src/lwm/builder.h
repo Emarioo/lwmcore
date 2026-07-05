@@ -2,9 +2,10 @@
 #pragma once
 
 #include <stdint.h>
+#include <stddef.h>
 #include <stdbool.h>
 
-#include "lwm/lwm_isa.h"
+#include "lwm/isa.h"
 
 typedef struct {
     uint8_t* byteStream;
@@ -13,9 +14,22 @@ typedef struct {
 } Builder;
 
 void builder_init(Builder* builder);
-void builder_init_stream(Builder* builder, void* ptr, size_t length, size_t max);
+void builder_init_stream(Builder* builder, void* ptr, size_t head, size_t max);
 static inline int builder_head(Builder* builder) {
     return builder->byteStream_len;
+}
+static inline void emit_zeros(Builder* builder, int size) {
+    for (int i=0;i<size;i++) {
+        builder->byteStream[builder->byteStream_len] = 0;
+        builder->byteStream_len++;
+    }
+}
+
+static inline void emit_bytes(Builder* builder, uint8_t* data, int size) {
+    for (int i=0;i<size;i++) {
+        builder->byteStream[builder->byteStream_len] = data[i];
+        builder->byteStream_len++;
+    }
 }
 
 void emit_li8(Builder* builder, int reg0, uint8_t imm);
@@ -86,8 +100,14 @@ void emit_rdtick2(Builder* builder, int reg0, int reg1, int reg2, int reg3);
 
 void emit_memop(Builder* builder, MemoryInstructionKind kind, AddressingForm form, int reg0, int reg_base, int reg_index, int64_t in_displacement);
 
-void emit_jmp(Builder* builder, int32_t** relative);
-void emit_call(Builder* builder, int32_t** relative);
+void emit_jmp32(Builder* builder, uint64_t* fixup);
+void emit_jmp16(Builder* builder, uint64_t* fixup);
+void emit_jmp8(Builder* builder, uint64_t* fixup);
+
+void emit_call32(Builder* builder, uint64_t* fixup);
+void emit_call16(Builder* builder, uint64_t* fixup);
+void emit_call8(Builder* builder, uint64_t* fixup);
+
 void emit_jz(Builder* builder, int reg0, int32_t** relative);
 void emit_jnz(Builder* builder, int reg0, int32_t** relative);
 void emit_jcond(Builder* builder, ConditionKind kind, int reg0, int reg1, int32_t** relative);

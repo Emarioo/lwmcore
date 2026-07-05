@@ -4,12 +4,16 @@
 
 # Parameters to set:
 
+APP_NAME := lwm
+
 ifeq ($(OS),Windows_NT)
-  INT_DIR  ?= int/lwm_windows
-  EXECUTABLE ?= $(INT_DIR)/lwm.exe
+  BIN_DIR    ?= bin
+  INT_DIR    ?= int/$(APP_NAME)_windows
+  EXECUTABLE ?= $(INT_DIR)/$(APP_NAME).exe
 else
-  INT_DIR  ?= int/lwm_linux
-  EXECUTABLE ?= $(INT_DIR)/lwm
+  BIN_DIR    ?= bin
+  INT_DIR    ?= int/$(APP_NAME)_linux
+  EXECUTABLE ?= $(INT_DIR)/$(APP_NAME)
 endif
 
 SILENT ?= @
@@ -44,9 +48,11 @@ DEP_FILES := $(patsubst %.o,%.d,$(OBJ_FILES))
 ifeq ($(OS),Windows_NT)
 	RM_CMD := cmd /C del /Q
 	MKDIR  := cmd /C mkdir
+	CP     := cp
 else
-	RM_CMD := rm
+	RM_CMD := rm -f
 	MKDIR  := mkdir -p
+	CP     := cp
 endif
 
 all: $(EXECUTABLE)
@@ -72,7 +78,10 @@ $(INT_DIR)/%.o: $(INT_DIR)/%.s | $(INT_DIR)
 	$(SILENT) $(AS) $(ASFLAGS) -c -MD $(patsubst %.o,%.d,$@) -o $@ $<
 
 $(EXECUTABLE): $(OBJ_FILES) | $(INT_DIR)
+	$(SILENT) mkdir -p $(BIN_DIR)
 	$(SILENT) $(CC) -o $@ $^ $(LDFLAGS)
+	$(SILENT) $(CP) $@ $(BIN_DIR)/$(notdir $@)
+
 
 clean:
 ifeq ($(OS),Windows_NT)

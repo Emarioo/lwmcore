@@ -2,86 +2,63 @@
 
 #include <stdint.h>
 
-#define MAX_LABELS_PER_BLOCK 100
-#define MAX_INST_PER_BLOCK 100
-#define MAX_BLOCKS 100
-#define MAX_LOCATION_MAPPING 100
 
 #include "lwm/util.h"
-#include "lwm/lwm_isa.h"
+#include "lwm/isa.h"
 
-// typedef struct {
-//     char*    ptr;
-//     uint32_t len;
-//     uint32_t max;
-// } string;
-
-typedef struct {
-    const char* file;
-    int line;
-    int column;
-} Location;
+#include "lwm/parser_util.h"
 
 typedef struct {
     string name;
-    int addr; // relative to block
+    int object_id;
+    int final_address; // relative to block
+    int estimated_address; // relative to block
 } Label;
 
 typedef struct {
+    string label;
     int regnum;
     int64_t immediate;
-    string label;
-
     AddressingForm form;
     int reg_base;
     int reg_index;
-    // @TODO Addressing mode.
 } Operand;
 
 typedef struct {
     u8      opcode;
     u8      sub_opcode;
     u8      operands_len;
+    int     parseHead;
     Operand operands[4];
 } Instruction;
 
+typedef struct {
+    u8* bytes;
+    int size;
+} DataObject;
+
+#define OBJECT_INSTRUCTION 0
+#define OBJECT_DATA 1
 
 typedef struct {
+    u8 kind;
+    u8 alignment; // (1 << alignment)
+    union {
+        Instruction inst;
+        DataObject  dataobj;
+    };
+} Object;
+
+typedef struct {
+    string   name;
     uint64_t addr;
-    int size;
+    int      size;
     Location location;
     
-    int inst_len;
-    Instruction insts[MAX_INST_PER_BLOCK]; // TODO: Increase limit
+    int     objects_len;
+    Object* objects;
     
-    int label_len;
-    Label labels[MAX_LABELS_PER_BLOCK]; // TODO: Increase limit
-} Block;
-
-
-typedef struct {
-    int head_start;
-    int head_end;
-    string file;
-    int line;
-} LocationMapping;
-
-
-typedef struct {
-    string source_file;
-    int error_code;
-
-    char* text;
-    int   text_len;
-
-    
-    int block_len;
-    Block blocks[MAX_BLOCKS]; // TODO: Increase limit
-
-    int loc_map_len;
-    LocationMapping loc_map[MAX_LOCATION_MAPPING]; // TODO: Increase limit
-
-    jmp_buf jumpBuffer;
-} AssemblerContext;
-
+    int     label_len;
+    Label*  labels;
+} Section;
 

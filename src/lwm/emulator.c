@@ -1,8 +1,10 @@
 
 
 
-#include "lwm/lwm_emulator.h"
-#include "lwm/lwm_isa.h"
+#include "lwm/emulator.h"
+#include "lwm/isa.h"
+
+#include "lwm/util.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -12,7 +14,7 @@
 
 typedef struct {
     CoreState coreState;
-    PlatformConfig platformConfig;
+    PlatformConfig* platformConfig;
     
     uint8_t* physicalMemory;
     uint64_t physicalMemory_size;
@@ -29,22 +31,22 @@ typedef struct {
 #define USER_ENABLED() (core->crstatus & CRSTATUS_USER)
 
 // @TODO Misaligned reads
-#define  READ8(address) (check_address(emulator, address, 1), *(( uint8_t*)&emulator->physicalMemory[address]))
-#define READ16(address) (check_address(emulator, address, 2), *((uint16_t*)&emulator->physicalMemory[address]))
-#define READ32(address) (check_address(emulator, address, 4), *((uint32_t*)&emulator->physicalMemory[address]))
-#define READ64(address) (check_address(emulator, address, 8), *((uint64_t*)&emulator->physicalMemory[address]))
+#define  READ8(address) read_address8(emulator, address)
+#define READ16(address) read_address16(emulator, address)
+#define READ32(address) read_address32(emulator, address)
+#define READ64(address) read_address64(emulator, address)
 
-#define  WRITE8(address, value) (check_address(emulator, address, 1), (*(( uint8_t*)&emulator->physicalMemory[address]) = (value)))
-#define WRITE16(address, value) (check_address(emulator, address, 2), (*((uint16_t*)&emulator->physicalMemory[address]) = (value)))
-#define WRITE32(address, value) (check_address(emulator, address, 4), (*((uint32_t*)&emulator->physicalMemory[address]) = (value)))
-#define WRITE64(address, value) (check_address(emulator, address, 8), (*((uint64_t*)&emulator->physicalMemory[address]) = (value)))
+#define  WRITE8(address, value) write_address8(emulator, address, value)
+#define WRITE16(address, value) write_address16(emulator, address, value)
+#define WRITE32(address, value) write_address32(emulator, address, value)
+#define WRITE64(address, value) write_address64(emulator, address, value)
 
 
 #define BITMASK(WORD, BL, BH) ( ((WORD) >> BL) & ( ((uint64_t)1 << ((1+BH)-BL)) - 1 ) )
 
 #define REGISTER_BYTESIZE() (2 << emulator->coreState.mode)
 
-inline void fault(EmulatorContext* emulator) {
+void fault(EmulatorContext* emulator) {
     longjmp(emulator->loop_jmpbuf, 1);
 }
 
@@ -54,7 +56,7 @@ void check_registers(EmulatorContext* emulator, uint8_t* regs, int count) {
     if (emulator->coreState.mode != MODE_16) {
         for (int i=0;i<count;i++) {
             if (regs[i] > 31) {
-                fprintf(stderr, "Exception ILLEGAL instruction at %zx. Registers limited to 32 (found r%d)\n", pc, regs[i]);
+                fprintf(stderr, "Exception ILLEGAL instruction at 0x%zx. Registers limited to 32 (found r%d)\n", pc, regs[i]);
                 fault(emulator);
                 return;
             }
@@ -62,7 +64,7 @@ void check_registers(EmulatorContext* emulator, uint8_t* regs, int count) {
     } else {
         for (int i=0;i<count;i++) {
             if (regs[i] > 15) {
-                fprintf(stderr, "Exception ILLEGAL instruction at %zx. 16-bit mode, upper 16-bit register not available\n", pc);
+                fprintf(stderr, "Exception ILLEGAL instruction at 0x%zx. 16-bit mode, upper 16-bit register not available\n", pc);
                 fault(emulator);
                 return;
             }
@@ -70,26 +72,122 @@ void check_registers(EmulatorContext* emulator, uint8_t* regs, int count) {
     }
 }
 
-
-inline bool check_address(EmulatorContext* emulator, uint64_t address, uint64_t size) {
+bool write_address(EmulatorContext* emulator, uint64_t address, uint64_t size, void* data) {
     CoreState* core = &emulator->coreState;
+    
     if (PAGING_ENABLED()) {
         fprintf(stderr, "Paging not implemented at instruction fetch\n");
+        fault(emulator);
         return false;
-    } else {
-        if (address + size > emulator->physicalMemory_size) {
-            // halt
-            fprintf(stderr, "Halt at %zu, outside physical memory %zu\n", address, emulator->physicalMemory_size);
-            return false;
+    }
+
+    for (int i=0;i<emulator->platformConfig->devices_len;i++) {
+        HardwareDevice* dev = emulator->platformConfig->devices[i];
+        if (dev->mmio_write) {
+            bool res = dev->mmio_write(address, size, data);
+            if (res) {
+                return true;
+            }
         }
     }
+
+    if (address + size > emulator->physicalMemory_size) {
+        // halt
+        fprintf(stderr, "Halt at 0x%zx, outside physical memory 0x%zx\n", address, emulator->physicalMemory_size);
+        fault(emulator);
+        return false;
+    }
+
+    switch (size) {
+        case 1: *(uint8_t*)&emulator->physicalMemory[address] = *(uint8_t*)data; break;
+        case 2: *(uint16_t*)&emulator->physicalMemory[address] = *(uint16_t*)data; break;
+        case 4: *(uint32_t*)&emulator->physicalMemory[address] = *(uint32_t*)data; break;
+        case 8: *(uint64_t*)&emulator->physicalMemory[address] = *(uint64_t*)data; break;
+        default: Assert(false);
+    }
+
+    // printf("ACCESS 0x%zx\n", address);
+
     return true;
 }
 
 
-inline int decode_form_reg1_imm(EmulatorContext* emulator, uint64_t pc, uint32_t opcodeBase, uint32_t* opcode, uint8_t regs[1], uint64_t* immediate) {
+bool read_address(EmulatorContext* emulator, uint64_t address, uint64_t size, void* data) {
+    // @TODO Add write/read access to check
 
-    check_address(emulator, pc, 2);
+    CoreState* core = &emulator->coreState;
+    if (PAGING_ENABLED()) {
+        fprintf(stderr, "Paging not implemented at instruction fetch\n");
+        fault(emulator);
+        return false;
+    }
+
+    for (int i=0;i<emulator->platformConfig->devices_len;i++) {
+        HardwareDevice* dev = emulator->platformConfig->devices[i];
+        if (dev->mmio_read) {
+            bool res = dev->mmio_read(address, size, data);
+            if (res) {
+                return true;
+            }
+        }
+    }
+
+    if (address + size > emulator->physicalMemory_size) {
+        // halt
+        fprintf(stderr, "Halt at 0x%zx, outside physical memory 0x%zx\n", address, emulator->physicalMemory_size);
+        fault(emulator);
+        return false;
+    }
+    
+    switch (size) {
+        case 1: *(uint8_t*)data = *(uint8_t*)&emulator->physicalMemory[address]; break;
+        case 2: *(uint16_t*)data = *(uint16_t*)&emulator->physicalMemory[address]; break;
+        case 4: *(uint32_t*)data = *(uint32_t*)&emulator->physicalMemory[address]; break;
+        case 8: *(uint64_t*)data = *(uint64_t*)&emulator->physicalMemory[address]; break;
+        default: Assert(false);
+    }
+
+    // printf("ACCESS 0x%zx\n", address);
+
+    return true;
+}
+
+static inline uint8_t read_address8(EmulatorContext* emulator, uint64_t address) {
+    uint8_t value;
+    read_address(emulator, address, 1, &value);
+    return value;
+}
+static inline uint16_t read_address16(EmulatorContext* emulator, uint64_t address) {
+    uint16_t value;
+    read_address(emulator, address, 2, &value);
+    return value;
+}
+static inline uint32_t read_address32(EmulatorContext* emulator, uint64_t address) {
+    uint32_t value;
+    read_address(emulator, address, 4, &value);
+    return value;
+}
+static inline uint64_t read_address64(EmulatorContext* emulator, uint64_t address) {
+    uint64_t value;
+    read_address(emulator, address, 8, &value);
+    return value;
+}
+static inline void write_address8(EmulatorContext* emulator, uint64_t address, uint8_t value) {
+    write_address(emulator, address, 1, &value);
+}
+static inline void write_address16(EmulatorContext* emulator, uint64_t address, uint16_t value) {
+    write_address(emulator, address, 2, &value);
+}
+static inline void write_address32(EmulatorContext* emulator, uint64_t address, uint32_t value) {
+    write_address(emulator, address, 4, &value);
+}
+static inline void write_address64(EmulatorContext* emulator, uint64_t address, uint64_t value) {
+    write_address(emulator, address, 8, &value);
+}
+
+
+
+int decode_form_reg1_imm(EmulatorContext* emulator, uint64_t pc, uint32_t opcodeBase, uint32_t* opcode, uint8_t regs[1], uint64_t* immediate) {
 
     uint32_t tmp_opcode = READ8(pc);
     if (opcode) {
@@ -98,8 +196,6 @@ inline int decode_form_reg1_imm(EmulatorContext* emulator, uint64_t pc, uint32_t
     regs[0] = READ8(pc + 1);
 
     int immediateSize = 1 << (tmp_opcode - opcodeBase);
-
-    check_address(emulator, pc + 2, immediateSize);
 
     if (immediateSize == 1)
         *immediate = READ8(pc + 2);
@@ -114,9 +210,7 @@ inline int decode_form_reg1_imm(EmulatorContext* emulator, uint64_t pc, uint32_t
 }
 
 
-inline int decode_form_reg1(EmulatorContext* emulator, uint64_t pc, uint32_t* opcode, uint8_t regs[1]) {
-
-    check_address(emulator, pc, 2);
+int decode_form_reg1(EmulatorContext* emulator, uint64_t pc, uint32_t* opcode, uint8_t regs[1]) {
 
     uint32_t tmp_opcode = READ8(pc);
     if (opcode) {
@@ -128,9 +222,7 @@ inline int decode_form_reg1(EmulatorContext* emulator, uint64_t pc, uint32_t* op
     return 2;
 }
 
-inline int decode_form_reg2(EmulatorContext* emulator, uint64_t pc, uint32_t* opcode, uint8_t regs[2]) {
-
-    check_address(emulator, pc, 3);
+int decode_form_reg2(EmulatorContext* emulator, uint64_t pc, uint32_t* opcode, uint8_t regs[2]) {
 
     uint32_t tmp_opcode = READ8(pc);
     if (opcode) {
@@ -143,9 +235,7 @@ inline int decode_form_reg2(EmulatorContext* emulator, uint64_t pc, uint32_t* op
     return 3;
 }
 
-inline int decode_form_reg3(EmulatorContext* emulator, uint64_t pc, uint32_t* opcode, uint8_t regs[3]) {
-
-    check_address(emulator, pc, 4);
+int decode_form_reg3(EmulatorContext* emulator, uint64_t pc, uint32_t* opcode, uint8_t regs[3]) {
 
     uint32_t tmp_opcode = READ8(pc);
     if (opcode) {
@@ -159,9 +249,7 @@ inline int decode_form_reg3(EmulatorContext* emulator, uint64_t pc, uint32_t* op
     return 4;
 }
 
-inline int decode_form_reg4(EmulatorContext* emulator, uint64_t pc, uint32_t* opcode, uint8_t regs[4]) {
-
-    check_address(emulator, pc, 5);
+int decode_form_reg4(EmulatorContext* emulator, uint64_t pc, uint32_t* opcode, uint8_t regs[4]) {
 
     uint32_t tmp_opcode = READ8(pc);
     if (opcode) {
@@ -176,9 +264,7 @@ inline int decode_form_reg4(EmulatorContext* emulator, uint64_t pc, uint32_t* op
     return 5;
 }
 
-inline int decode_form_pc(EmulatorContext* emulator, uint64_t pc, uint32_t opcodeBase, uint32_t* opcode, int32_t* immediate) {
-
-    check_address(emulator, pc, 1);
+int decode_form_pc(EmulatorContext* emulator, uint64_t pc, uint32_t opcodeBase, uint32_t* opcode, int32_t* immediate) {
 
     uint32_t tmp_opcode = READ8(pc);
     if (opcode) {
@@ -186,8 +272,6 @@ inline int decode_form_pc(EmulatorContext* emulator, uint64_t pc, uint32_t opcod
     }
 
     int immediateSize = 1 << (tmp_opcode - opcodeBase);
-
-    check_address(emulator, pc + 1, immediateSize);
 
     if (immediateSize == 1)
         *immediate = READ8(pc + 1);
@@ -199,8 +283,7 @@ inline int decode_form_pc(EmulatorContext* emulator, uint64_t pc, uint32_t opcod
     return 1 + immediateSize;
 }
 
-inline int decode_form_jmp_reg1(EmulatorContext* emulator, uint64_t pc, uint32_t* opcode, uint8_t regs[1], int32_t* relative) {
-    check_address(emulator, pc, 2);
+int decode_form_jmp_reg1(EmulatorContext* emulator, uint64_t pc, uint32_t* opcode, uint8_t regs[1], int32_t* relative) {
 
     uint32_t tmp_opcode = READ8(pc);
     if (opcode) {
@@ -217,8 +300,6 @@ inline int decode_form_jmp_reg1(EmulatorContext* emulator, uint64_t pc, uint32_t
 
     int immediateSize = 1 << (flags & 0x3);
 
-    check_address(emulator, pc + 2, immediateSize);
-
     if (immediateSize == 1)
         *relative = (int8_t)READ8(pc + 2);
     else if (immediateSize == 2)
@@ -229,9 +310,7 @@ inline int decode_form_jmp_reg1(EmulatorContext* emulator, uint64_t pc, uint32_t
     return 3 + immediateSize;
 }
 
-inline int decode_form_jmp_reg2(EmulatorContext* emulator, uint64_t pc, uint32_t* opcode, ConditionKind* cond, uint8_t regs[2], int32_t* relative) {
-
-    check_address(emulator, pc, 3);
+int decode_form_jmp_reg2(EmulatorContext* emulator, uint64_t pc, uint32_t* opcode, ConditionKind* cond, uint8_t regs[2], int32_t* relative) {
 
     uint32_t tmp_opcode = READ8(pc);
     if (opcode) {
@@ -252,8 +331,6 @@ inline int decode_form_jmp_reg2(EmulatorContext* emulator, uint64_t pc, uint32_t
 
     *cond = condition;
 
-    check_address(emulator, pc + 3, immediateSize);
-
     if (immediateSize == 1)
         *relative = (int8_t)READ8(pc + 3);
     else if (immediateSize == 2)
@@ -264,7 +341,7 @@ inline int decode_form_jmp_reg2(EmulatorContext* emulator, uint64_t pc, uint32_t
     return 3 + immediateSize;
 }
 
-inline int decode_form_memory(EmulatorContext* emulator, uint64_t pc, uint32_t* opcode, uint8_t regs[3], AddressingForm* addressingForm, int64_t* displacement) {
+int decode_form_memory(EmulatorContext* emulator, uint64_t pc, uint32_t* opcode, uint8_t regs[3], AddressingForm* addressingForm, int64_t* displacement) {
     /*
     lea r0, [r1 + disp8/16/32]
         [ opcode 8 | reg 5 | reg 5 | disp8 ]
@@ -295,8 +372,6 @@ inline int decode_form_memory(EmulatorContext* emulator, uint64_t pc, uint32_t* 
     regs[1] = 0; // registers won't fail because of uninitialized values.
     regs[2] = 0;
 
-    check_address(emulator, pc, 2);
-
     uint32_t tmp_opcode = READ8(pc);
     if (opcode) {
         *opcode = tmp_opcode;
@@ -309,44 +384,37 @@ inline int decode_form_memory(EmulatorContext* emulator, uint64_t pc, uint32_t* 
 
     if (flags == 0) {
 
-        check_address(emulator, pc + 2, 2);
         *addressingForm = ADDRESSING_ABS16;
         *displacement = (int16_t)READ16(pc + 2);
         return 4;
 
     } else if (flags == 1) {
 
-        check_address(emulator, pc + 2, 4);
         *addressingForm = ADDRESSING_ABS32;
         *displacement = (int32_t)READ32(pc + 2);
         return 6;
 
     } else if (flags == 2) {
 
-        check_address(emulator, pc + 2, 8);
         *addressingForm = ADDRESSING_ABS64;
         *displacement = (int64_t)READ64(pc + 2);
         return 10;
 
     } else if (flags == 3) {
 
-        check_address(emulator, pc+2, 1);
         uint8_t extraWord = (uint8_t)READ8(pc+2);
         int extraFlags = BITMASK(extraWord, 0, 2);
         regs[1]   = BITMASK(extraWord, 3, 7);
 
         if (extraFlags == 0) {
-            check_address(emulator, pc+3, 1);
             *addressingForm = ADDRESSING_REG1_DISP8;
             *displacement = (int8_t)READ8(pc + 3);
             return 4;
         } else if (extraFlags == 1) {
-            check_address(emulator, pc+3, 2);
             *addressingForm = ADDRESSING_REG1_DISP16;
             *displacement = (int16_t)READ16(pc + 3);
             return 5;
         } else if (extraFlags == 2) {
-            check_address(emulator, pc+3, 4);
             *addressingForm = ADDRESSING_REG1_DISP32;
             *displacement = (int32_t)READ32(pc + 3);
             return 7;
@@ -357,24 +425,20 @@ inline int decode_form_memory(EmulatorContext* emulator, uint64_t pc, uint32_t* 
 
     } else if (flags == 4) {
         
-        check_address(emulator, pc+2, 2);
         uint16_t extraWord = (uint16_t)READ16(pc+2);
         int extraFlags = BITMASK(extraWord, 0, 2) | (BITMASK(extraWord, 8, 10) << 3);
         regs[1]   = BITMASK(extraWord, 3, 7);
         regs[2]   = BITMASK(extraWord, 11, 15);
 
         if (extraFlags == 0) {
-            check_address(emulator, pc+4, 1);
             *addressingForm = ADDRESSING_REG2_DISP8;
             *displacement = (int8_t)READ8(pc + 4);
             return 5;
         } else if (extraFlags == 1) {
-            check_address(emulator, pc+4, 2);
             *addressingForm = ADDRESSING_REG2_DISP16;
             *displacement = (int16_t)READ16(pc + 4);
             return 6;
         } else if (extraFlags == 2) {
-            check_address(emulator, pc+4, 4);
             *addressingForm = ADDRESSING_REG2_DISP32;
             *displacement = (int32_t)READ32(pc + 4);
             return 8;
@@ -385,7 +449,6 @@ inline int decode_form_memory(EmulatorContext* emulator, uint64_t pc, uint32_t* 
 
     } else if (flags == 5) {
         
-        check_address(emulator, pc+2, 4);
         *addressingForm = ADDRESSING_PC_DISP32;
         *displacement = (int32_t)READ32(pc + 2);
         return 6;
@@ -401,23 +464,80 @@ inline int decode_form_memory(EmulatorContext* emulator, uint64_t pc, uint32_t* 
 
 void emulator_step(EmulatorContext* emulator);
 
+void emulator_dump_state(EmulatorContext* emulator) {
+    CoreState* core = &emulator->coreState;
+
+    printf("Core state:\n");
+    switch (core->mode) {
+        case MODE_16: printf(" mode: 16-bit\n"); break;
+        case MODE_32: printf(" mode: 32-bit\n"); break;
+        case MODE_64: printf(" mode: 64-bit\n"); break;
+        default:      printf(" mode: %d\n", core->mode); break;
+    }
+    printf(" pc: 0x%zx\n", core->pc);
+    printf(" tickCounter: %zu\n", core->tickCounter);
+
+    int stride = 4;
+
+    int reg_count = core->mode == MODE_16 ? 16 : 32;
+
+    char regname[32];
+    for (int i=0;i<reg_count;i++) {
+        gpr_to_string(i, regname);
+        printf(" %3s: %zd (0x%zx) ", regname, core->gprs[i], core->gprs[i]);
+        if ((i+1) % stride == 0)
+            printf("\n");
+    }
+
+    for (int i=0;i<reg_count;i++) {
+        // @TODO Make function to convert regnum to string
+        cr_to_string(i, regname);
+        printf(" %10s: %zd (0x%zx) ", regname, core->crs[i], core->crs[i]);
+        if ((i+1) % stride == 0)
+            printf("\n");
+    }
+}
+
+
+bool uart_mmio_write(uintptr_t address, size_t size, void* data) {
+    if (size == 1 && address == 0x2000) {
+        printf("%c", *(char*)data);
+        return true;
+    }
+    return false;
+}
+
+static HardwareDevice uart_device = {
+    .mmio_write = uart_mmio_write   
+};
+
 void emulator_start(PlatformConfig* config) {
 
     EmulatorContext _ctx = {0};
     EmulatorContext* emulator = &_ctx;
 
-    emulator->platformConfig.core_entry = 0x0;
 
+    emulator->platformConfig = config;
     emulator->physicalMemory_size = 0x100000;
     emulator->physicalMemory = malloc(emulator->physicalMemory_size);
     memset(emulator->physicalMemory, 0xDF, emulator->physicalMemory_size);
 
+    memcpy(emulator->physicalMemory, config->rom, config->rom_len);
+
     emulator->coreState.mode = MODE_16;
-    emulator->coreState.pc = emulator->platformConfig.core_entry;
+    emulator->coreState.pc = emulator->platformConfig->core_entry;
+
+    if (emulator->platformConfig->devices_len == 0) {
+        emulator->platformConfig->devices = malloc(sizeof(HardwareDevice));
+        emulator->platformConfig->devices[0] = &uart_device;
+        emulator->platformConfig->devices_len = 1;
+    }
 
     CoreState* core = &emulator->coreState;
 
     emulator->running = true;
+
+    printf("Start emulator\n");
 
     while (emulator->running) {
 
@@ -432,6 +552,10 @@ void emulator_start(PlatformConfig* config) {
         }
 
     }
+    
+    printf("Stop emulator\n");
+
+    emulator_dump_state(emulator);
 }
 
 #define INCOMPLETE_INST(...) do { fprintf(stderr, __VA_ARGS__); fault(emulator); } while (0)
@@ -443,19 +567,15 @@ void emulator_step(EmulatorContext* emulator) {
     uint8_t opcodeByte;
     uint32_t opcode;
 
-    check_address(emulator, pc, 1);
-
-    if (PAGING_ENABLED()) {
-        assert(false);
-    } else {
-        opcodeByte = READ8(pc);
-    }
+    opcodeByte = READ8(pc);
 
     uint64_t next_pc = -1;
     uint8_t  regs[4];
     uint64_t immediate;
     int32_t  relative;
     int      bytes;
+
+    // printf("Opcode %d\n", opcodeByte);
 
     opcode = opcodeByte;
     switch (opcode) {
@@ -490,10 +610,6 @@ void emulator_step(EmulatorContext* emulator) {
 
             next_pc = core->gprs[regs[0]];
         } break;
-    }
-
-    opcode = opcodeByte;
-    switch (opcode) {
         case OPCODE_NOT:
         {
             bytes = decode_form_reg2(emulator, pc, NULL, regs);
@@ -530,10 +646,6 @@ void emulator_step(EmulatorContext* emulator) {
 
             next_pc = pc + bytes;
         } break;
-    }
-
-    opcode = opcodeByte;
-    switch (opcode) {
         case OPCODE_ADD:
         case OPCODE_SUB:
         case OPCODE_UMUL:
@@ -599,7 +711,7 @@ void emulator_step(EmulatorContext* emulator) {
         {
             bytes = decode_form_pc(emulator, pc, OPCODE_JMP, NULL, &relative);
 
-            next_pc = pc + bytes + immediate;
+            next_pc = pc + bytes + relative;
         } break;
         case OPCODE_CALL:
         case OPCODE_CALL1:
@@ -608,7 +720,7 @@ void emulator_step(EmulatorContext* emulator) {
             bytes = decode_form_pc(emulator, pc, OPCODE_CALL, NULL, &relative);
 
             core->lr = pc + bytes;
-            next_pc = pc + bytes + immediate;
+            next_pc = pc + bytes + relative;
         } break;
         case OPCODE_RET:
         {
@@ -755,7 +867,7 @@ void emulator_step(EmulatorContext* emulator) {
             bytes = decode_form_memory(emulator, pc, NULL, regs, &addressingForm, &displacement);
             check_registers(emulator, regs, 3);
 
-            uint64_t result;
+            uint64_t result = 0;
             uint64_t address;
 
             switch (addressingForm) {
@@ -846,6 +958,10 @@ void emulator_step(EmulatorContext* emulator) {
         {
             INCOMPLETE_INST("TODO implement vmstart\n");
         } break;
+        default: {
+            fprintf(stderr, "Exception ILLEGAL instruction at 0x%zx. Unknown opcode %d\n", pc, opcode);
+            fault(emulator);
+        }
     }
 
     if (emulator->running) {
@@ -859,10 +975,6 @@ void emulator_step(EmulatorContext* emulator) {
 
 
 
-
-
-
-
 char tohex(int x) {
     if(x >= 0 && x <= 9)
         return '0' + x;
@@ -871,34 +983,33 @@ char tohex(int x) {
     return '0';
 }
 
+// @TODO Disassembler. Also used in emulator, printing each instruction that runs and updated registers.
+
+// @TODO Disassemble at a specific position
+
 void dump(PlatformConfig* config) {
     printf("Core entry: %zu\n", config->core_entry);
-    uint32_t* words = (uint32_t*)config->rom;
-    for(int i=0;i<config->rom_len/4;i++) {
+    uint8_t* rom = config->rom;
 
-        uint32_t word = words[i];
-        printf(" 0x%x: ", i*4);
+    int stride = 4;
+    
+    printf("ROM %d bytes (0x%x)\n", config->rom_len, config->rom_len);
+    int i = 0;
+    for(;i<config->rom_len;i++) {
 
-        char c0 = tohex((word>>16)&0xF);
-        char c1 = tohex((word>>20)&0xF);
-        char c2 = tohex((word>>24)&0xF);
-        char c3 = tohex((word>>28)&0xF);
-        printf("%c%c %c%c ", c3, c2, c1, c0);
-        c0 = tohex((word>>0)&0xF);
-        c1 = tohex((word>>4)&0xF);
-        c2 = tohex((word>>8)&0xF);
-        c3 = tohex((word>>12)&0xF);
-        printf("%c%c %c%c ", c3, c2, c1, c0);
+        if (i % stride == 0) {
+            printf(" 0x%x: ", i);
+        }
 
-        // int opcode = (word >> 8);
-        // if((opcode & 0x80) == 0) {
-        //     opcode = opcode >> 4;
-        // } else if((opcode & 0x80) == 1) {
-        //     opcode = opcode >> 3;
-        // }
-        // string name = get_opcode_name(opcode);
-        // printf("%s", name.ptr);
-
+        char c0 = tohex((rom[i]>>0)&0xF);
+        char c1 = tohex((rom[i]>>4)&0xF);
+        printf("%c%c ", c1, c0);
+        
+        if ((i+1) % stride == 0) {
+            printf("\n");
+        }
+    }
+    if ((i+1) % stride != 0) {
         printf("\n");
     }
 }

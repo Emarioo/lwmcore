@@ -3,6 +3,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <stddef.h>
 #include <stdbool.h>
 
 
@@ -38,12 +39,23 @@ typedef struct {
 
 } CoreState;
 
+typedef bool(*FN_mmio_read )(uintptr_t address, size_t size, void* data);
+typedef bool(*FN_mmio_write)(uintptr_t address, size_t size, void* data);
+
+typedef struct {
+    FN_mmio_read  mmio_read;
+    FN_mmio_write mmio_write;
+} HardwareDevice;
 
 typedef struct {
     uint64_t core_entry;
     void*    rom;
     int      rom_len;
+
+    int              devices_len;
+    HardwareDevice** devices;
 } PlatformConfig;
+
 
 
 void emulator_start(PlatformConfig* config);

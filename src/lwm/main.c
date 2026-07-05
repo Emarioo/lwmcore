@@ -1,7 +1,8 @@
 
-#include "lwm/lwm_assembler.h"
-#include "lwm/lwm_emulator.h"
+#include "lwm/assembler.h"
+#include "lwm/emulator.h"
 #include "lwm/blotter.h"
+#include "lwm/scheme_gen.h"
 
 void print_help() {
     printf("Usage: lwm sample.s -o sample.bin\n");
@@ -9,6 +10,7 @@ void print_help() {
     printf("  -e,--emulate    : Assembles and emulates the file.\n");
     printf("  -r,--rom <path> : Assembles and writes a Logic World subassembly file.\n");
     printf("  -f,--force      : Will overwrite user made subassembly.\n");
+    printf("  -s <path>       : Generate encoder from scheme.\n");
     printf("  --safe          : Don't write any files, log which ones would have been written to.\n");
 }
 
@@ -16,8 +18,10 @@ int main(int argc, const char** argv) {
     string assembly_file = {0};
     string bin_file = {0, nullptr};
     string rom_file = {0, nullptr};
+    const char* scheme_file = NULL;
     bool do_emulate = false;
     bool do_rom = false;
+    bool do_scheme = false;
     bool overwrite_user_subassembly = false;
 
     for(int i=1;i<argc;i++) {
@@ -50,6 +54,15 @@ int main(int argc, const char** argv) {
             overwrite_user_subassembly = true;
         } else if(!strcmp(arg, "--safe")) {
             DISABLE_FILE_WRITES = true;
+        } else if(!strcmp(arg, "-s")) {
+            if(i+1 >= argc) {
+                error("Missing argument after '%s'\n", arg);
+                return 1;
+            }
+            do_scheme = true;
+            arg = argv[i+1];
+            i++;
+            scheme_file = arg;
         } else if(!strcmp(arg, "-r") || !strcmp(arg, "--rom")) {
             if(i+1 >= argc) {
                 error("Missing argument after '%s'\n", arg);
@@ -59,7 +72,7 @@ int main(int argc, const char** argv) {
             arg = argv[i+1];
             i++;
             rom_file.len = strlen(arg);
-            rom_file.ptr = (char*)arg; // TODO: Don't cast like this. Temporarily discarding the warning.
+            rom_file.ptr = (char*)arg; // TODO: Don't cast like
         } else if(!strcmp(arg, "-o")) {
             if(i+1 >= argc) {
                 error("Missing argument after '%s'\n", arg);
@@ -79,6 +92,12 @@ int main(int argc, const char** argv) {
         }
     }
 
+    if (do_scheme) {
+        scheme_Database db;
+        parse_scheme(scheme_file, &db);
+        return 0;
+    }
+
     if(assembly_file.len == 0) {
         print_help();
         return 0;
@@ -95,7 +114,9 @@ int main(int argc, const char** argv) {
         return 1;
     }
 
-    Bin bin;
+    PlatformConfig config = {0};
+
+
     if(file_is_subassembly) {
         BlotterData* data = decompose_blotter_file(assembly_file);
         printf("(no crash)\n");
@@ -124,9 +145,9 @@ int main(int argc, const char** argv) {
         }
         AssemblerError result = assemble(buffer.ptr, buffer.len, &options);
 
-        PlatformConfig config = {0};
-        config.rom = 
-        dump(bin);
+        config.rom = options.rom;
+        config.rom_len = options.rom_len;
+        dump(&config);
     } else if(file_is_bin) {
         FILE* file = fopen(assembly_file.ptr, "rb");
         if (!file) {
@@ -141,23 +162,17 @@ int main(int argc, const char** argv) {
         fread(buffer.ptr, 1, buffer.len, file);
         fclose(file);
 
-        bin.len = buffer.len;
-        bin.max = buffer.len;
-        bin.ptr = buffer.ptr;
+        config.rom = buffer.ptr;
+        config.rom_len = buffer.len;
     }
 
     if (do_emulate) {
-
-        PlatformConfig config = {0};
-        config.core_entry = 0;
-        config.rom        = bin.ptr;
-        config.rom_len    = bin.len;
         emulator_start(&config);
     }
 
     if (do_rom) {
         string rom_data;
-        string bin_data = { bin.len, bin.ptr };
+        string bin_data = { config.rom_len, config.rom };
         
         bool yes = modify_rom_subassembly(bin_data, &rom_data);
         if(!yes)
@@ -213,14 +228,14 @@ int main(int argc, const char** argv) {
     
     if (bin_file.ptr) {
         if(DISABLE_FILE_WRITES) {
-            printf("fopen '%s' write %d bytes\n", bin_file.ptr, bin.len);
+            printf("fopen '%s' write %d bytes\n", bin_file.ptr, config.rom_len);
         } else {
             FILE* file = fopen(bin_file.ptr, "wb");
             if(!file) {
                 error("Could not write to '%s'\n", bin_file.ptr);
                 return 1;
             }
-            int len = fwrite(bin.ptr, 1, bin.len, file);
+            int len = fwrite(config.rom, 1, config.rom_len, file);
             fclose(file);
         }
     }
