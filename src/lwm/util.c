@@ -5,6 +5,7 @@
     #include "Windows.h"
 #else
     #include <sys/stat.h>
+    #include <unistd.h>
 #endif
 
 bool equal(string text, const char* str) {
@@ -131,3 +132,11 @@ bool writeFile(const char* path, void* buffer, size_t size) {
     return true;
 }
 
+
+void sleep_us(uint64_t microseconds) {
+    #ifdef __WIN32__
+        Sleep(microseconds / 1000);
+    #else
+        usleep(microseconds);
+    #endif
+}

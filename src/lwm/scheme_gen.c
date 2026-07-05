@@ -28,7 +28,7 @@ void parse_scheme(const char* path, scheme_Database* database) {
         return;
     }
 
-    writeFile("temp.pp", text.ptr, text.len);
+    // writeFile("scheme.pp", text.ptr, text.len);
 
 
     ParserContext _context = {0};

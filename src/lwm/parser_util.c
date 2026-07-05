@@ -103,7 +103,7 @@ int parse_int(ParserContext* context, int* inout_head, uint64_t* value) {
             }
             if ((chr|32) >= 'a' && (chr|32) <= 'f') {
                 ++head;
-                tempValue = 16 * tempValue + (chr|32) - 'a';
+                tempValue = 16 * tempValue + (chr|32) - 'a' + 10;
                 continue;
             }
             break;
@@ -271,10 +271,8 @@ int parse_string(ParserContext* context, int* inout_head, string* str) {
     const char* text = context->text;
     int text_len = context->text_len;
 
-    if(str) {
-        str->len = 0;
-        str->ptr = NULL;
-    }
+    str->len = 0;
+    str->ptr = NULL;
     int origin_head = *inout_head;
     int head = *inout_head;
 
@@ -283,30 +281,44 @@ int parse_string(ParserContext* context, int* inout_head, string* str) {
         return 0;
     }
     ++head;
-    if(str) {
-        str->ptr = (char*)&text[head];
-    }
+    str->ptr = (char*)&text[head];
+
+    // IMPORTANT: Do not remove this allocation, code when processing includes relies
+    //   on the returned memory not being invalidated.
+    // IMPORTANT: Code also relies on it being null terminated at its proper length.
+    int maxLength = 200;
+    str->ptr = malloc(maxLength + 1);
+
     while(head < text_len) {
-        // TODO: Handle escaped characters
+        if (text[head] == '\\') {
+            if (text[head+1] == 'n') {
+                str->ptr[str->len] = '\n';
+                str->len++;
+                head += 2;
+                continue;
+            } else if (text[head+1] == '0') {
+                str->ptr[str->len] = '\0';
+                str->len++;
+                head += 2;
+                continue;
+            } else {
+                // TODO: Handle escaped characters
+                return 0;
+            }
+        }
         if(text[head] == '"') {
             ++head;
             break;
         }
+        str->ptr[str->len] = text[head];
+        str->len++;
         ++head;
-        if(str) {
-            str->len++;
-        }
     }
 
-    if(str) {
-        // IMPORTANT: Do not remove this allocation, code when processing includes relies
-        //   on the returned memory not being invalidated.
-        // IMPORTANT: Code also relies on it being null terminated at its proper length.
-        char* buf = malloc(str->len + 1);
-        memcpy(buf, str->ptr, str->len);
-        buf[str->len] = '\0';
-        str->ptr = buf;
-    }
+    str->ptr[str->len] = '\0';
+
+    Assert(str->len <= maxLength);
+
     *inout_head = head;
     return head - origin_head;
 }
@@ -327,6 +339,9 @@ int parse_char(ParserContext* context, int* inout_head, char* out_chr) {
     if (text[head] == '\\') {
         if (text[head+1] == 'n') {
             *out_chr = '\n';
+            head += 2;
+        } else if (text[head+1] == '0') {
+            *out_chr = '\0';
             head += 2;
         } else {
             // TODO: Handle escaped characters

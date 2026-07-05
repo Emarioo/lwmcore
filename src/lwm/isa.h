@@ -19,9 +19,34 @@
 #define LWM_REGNR_CRTIMERCMP   7
 
 
-#define CRSTATUS_USER        0x1
-#define CRSTATUS_PAGING      0x2
-#define CRSTATUS_INTERRUPT   0x4
+#define CRSTATUS_USER        ((size_t)0x2)
+#define CRSTATUS_PAGING      ((size_t)0x4)
+#define CRSTATUS_INTERRUPT   ((size_t)0x16)
+
+#define CRCAUSE_PRESENT      ((size_t)0x1)
+#define CRCAUSE_USER         ((size_t)0x2)
+#define CRCAUSE_WRITE        ((size_t)0x4)
+#define CRCAUSE_EXECUTE      ((size_t)0x8)
+#define CRCAUSE_INTERRUPT    ((size_t)0x16)
+
+#define PAGE_BIT_PRESENT     ((size_t)0x1)
+#define PAGE_BIT_USER        ((size_t)0x2)
+#define PAGE_BIT_WRITE       ((size_t)0x4)
+#define PAGE_BIT_EXECUTE     ((size_t)0x8)
+
+
+#define VECTOR_ILLEGAL_INSTRUCTION  1
+#define VECTOR_PROTECTION_FAULT     2
+#define VECTOR_PAGE_FAULT           3
+#define VECTOR_DOUBLE_FAULT         4
+#define VECTOR_MISALIGNED           5
+#define VECTOR_SYSCALL              6
+#define VECTOR_DIVISION_BY_ZERO     7
+#define VECTOR_BREAKPOINT           8
+#define VECTOR_TIMER_INTERRUPT      9
+#define VECTOR_BUS_ERROR            10
+#define VECTOR_FATAL_MACHINE_ERROR  11
+
 
 // Instruction opcode numbers. Not strictly related to encoding
 typedef enum {
@@ -124,17 +149,30 @@ typedef enum {
 } ConditionKind;
 
 
+#define ADDRESSING_MASK_PRI(X)    ((X) & 0xF)
+#define ADDRESSING_MASK_SEC(X)    (((X) >> 4) & 0xF)
+#define ADDRESSING_ENUM(PRI, SEC) (((SEC) << 4) | (PRI))
 typedef enum {
-    ADDRESSING_ABS16,
-    ADDRESSING_ABS32,
-    ADDRESSING_ABS64,
-    ADDRESSING_REG1_DISP8,
-    ADDRESSING_REG1_DISP16,
-    ADDRESSING_REG1_DISP32,
-    ADDRESSING_REG2_DISP8,
-    ADDRESSING_REG2_DISP16,
-    ADDRESSING_REG2_DISP32,
-    ADDRESSING_PC_DISP32,
+    // You can use ABS16/32/64 if register REG1 is 0.
+    // It's rare to access absolute addresses so it seems reasonable.
+    // Leaves room for more addessing modes.
+    ADDRESSING_ABS16          = 0x00,
+    ADDRESSING_ABS32          = 0x01,
+    ADDRESSING_ABS64          = 0x02,
+    ADDRESSING_PC_DISP8       = 0x03,
+    ADDRESSING_PC_DISP16      = 0x04,
+    ADDRESSING_PC_DISP32      = 0x05,
+    ADDRESSING_REG1_DISP8     = 0x06,
+    ADDRESSING_REG1_DISP16    = 0x16,
+    ADDRESSING_REG1_DISP32    = 0x26,
+    ADDRESSING_REG1_DISP64    = 0x36,
+    ADDRESSING_REG1_PC_DISP8  = 0x46,
+    ADDRESSING_REG1_PC_DISP16 = 0x56,
+    ADDRESSING_REG1_PC_DISP32 = 0x66,
+    ADDRESSING_REG2_DISP8     = 0x07,
+    ADDRESSING_REG2_DISP16    = 0x17,
+    ADDRESSING_REG2_DISP32    = 0x27,
+    ADDRESSING_REG2_DISP64    = 0x37,
 } AddressingForm;
 
 
@@ -142,3 +180,4 @@ int largest_encoding(int opcode, AddressingForm form);
 
 void gpr_to_string(int reg, char regname[20]);
 void cr_to_string(int reg, char regname[20]);
+const char* opcode_to_string(int opcode);

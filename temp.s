@@ -1,20 +1,91 @@
 
-section .text 0x0
+
 #define UART_BASE 0x2000
+
+#define LOG_BASE 0x3000
+
+section .data 0x80
+
+ex_msg:
+    byte[] "EXCEPTION\n\0"
+
+section .text 0
+
 main:
-    li r0, 2
-    li r1, 5
-    add r0, r0, r1
+    li sp, 0x100
 
-    li r3, '0'
-    add r0, r0, r3
-    call putchar
+    // rdtick r0, r1, r2, r3
+
+    // lea r0, [ex_msg]
+    // call putstring
+
+    call init_vector
+
+    // mov r0, r0
+    // call logchar
+
+    // mov r0, r1
+    // call logchar
+
+    // mov r0, r2
+    // call logchar
     
-    li r0, '\n'
-    call putchar
+    // mov r0, r3
+    // call logchar
 
-    wfi
+    dbg
 
 putchar:
-    stb r0, [#UART_BASE] 
+    // stb r0, [#UART_BASE] 
+    // ret
+
+    stb r0, [r12 + #LOG_BASE] 
+    li r0, 1
+    add r12, r12, r0
     ret
+    
+putstring:
+    push lr
+    li r2, 1
+    mov r1, r0
+
+  putstring_loop:
+    ldb r0, [r1]
+    jz r0, putstring_end
+    call putchar
+    add r1, r1, r2
+    jmp putstring_loop
+  putstring_end:
+
+    pop lr
+    ret
+
+
+ex_handler:
+    lea r0, [ex_msg]
+    call putstring
+    wfi
+
+init_vector:
+    lea r0, [vector]
+    mtcr CRVB, r0
+    lea r0, [ex_handler]
+    li r2, 4
+    li r1, 12 // we have 11 exceptions at the moment
+    umul r1, r1, r2
+
+  init_vector_loop:
+    sth r0, [r1 + vector + -4]
+    sub r1, r1, r2
+    jnz r1, init_vector_loop
+
+    ret
+
+section .eh 0xC0
+
+
+section .vector 0x100
+vector:
+    long[12]
+
+

@@ -98,12 +98,19 @@ int largest_encoding(int opcode, AddressingForm form) {
                 case ADDRESSING_ABS16:          return 4;
                 case ADDRESSING_ABS32:          return 6;
                 case ADDRESSING_ABS64:          return 10;
-                case ADDRESSING_REG1_DISP8:     return 3;
-                case ADDRESSING_REG1_DISP16:    return 4;
-                case ADDRESSING_REG1_DISP32:    return 6;
-                case ADDRESSING_REG2_DISP8:     return 4;
-                case ADDRESSING_REG2_DISP16:    return 5;
-                case ADDRESSING_REG2_DISP32:    return 7;
+                case ADDRESSING_REG1_DISP8:   
+                case ADDRESSING_REG1_PC_DISP8:  return 4;
+                case ADDRESSING_REG1_DISP16:    
+                case ADDRESSING_REG1_PC_DISP16: return 5;
+                case ADDRESSING_REG1_DISP32:    
+                case ADDRESSING_REG1_PC_DISP32: return 7;
+                case ADDRESSING_REG1_DISP64:    return 11;
+                case ADDRESSING_REG2_DISP8:     return 5;
+                case ADDRESSING_REG2_DISP16:    return 6;
+                case ADDRESSING_REG2_DISP32:    return 8;
+                case ADDRESSING_REG2_DISP64:    return 12;
+                case ADDRESSING_PC_DISP8:       return 3;
+                case ADDRESSING_PC_DISP16:      return 4;
                 case ADDRESSING_PC_DISP32:      return 6;
             }
         case OPCODE_RDTICK: return 2;
@@ -115,3 +122,70 @@ int largest_encoding(int opcode, AddressingForm form) {
 }
 
 
+const char* opcode_to_string(int opcode) {
+    #define CASE(X, N) case X: return N;
+    switch ((OpcodeKind)opcode) {
+        CASE(OPCODE_LI8, "li8")
+        CASE(OPCODE_LI16, "li16")
+        CASE(OPCODE_LI32, "li32")
+        CASE(OPCODE_LI64, "li64")
+        CASE(OPCODE_CALL_REG, "call_reg")
+        CASE(OPCODE_JMP_REG, "jmp_reg")
+        CASE(OPCODE_PUSH, "push")
+        CASE(OPCODE_POP, "pop")
+        CASE(OPCODE_TLBFLUSH, "tlbflush")
+        CASE(OPCODE_NOT, "not")
+        CASE(OPCODE_MFCR, "mfcr")
+        CASE(OPCODE_MTCR, "mtcr")
+        CASE(OPCODE_CPUFEAT, "cpufeat")
+        CASE(OPCODE_ADD, "add")
+        CASE(OPCODE_SUB, "sub")
+        CASE(OPCODE_UMUL, "umul")
+        CASE(OPCODE_UDIV, "udiv")
+        CASE(OPCODE_UMOD, "umod")
+        CASE(OPCODE_SMUL, "smul")
+        CASE(OPCODE_SDIV, "sdiv")
+        CASE(OPCODE_SMOD, "smod")
+        CASE(OPCODE_AND, "and")
+        CASE(OPCODE_OR, "or")
+        CASE(OPCODE_XOR, "xor")
+        CASE(OPCODE_SHL, "shl")
+        CASE(OPCODE_SHR, "shr")
+        CASE(OPCODE_JMP, "jmp")
+        CASE(OPCODE_JMP1, "jmp1")
+        CASE(OPCODE_JMP2, "jmp2")
+        CASE(OPCODE_CALL, "call")
+        CASE(OPCODE_CALL1, "call1")
+        CASE(OPCODE_CALL2, "call2")
+        CASE(OPCODE_RET, "ret")
+        CASE(OPCODE_SYSCALL, "syscall")
+        CASE(OPCODE_VRET, "vret")
+        CASE(OPCODE_DBG, "dbg")
+        CASE(OPCODE_EINT, "eint")
+        CASE(OPCODE_DINT, "dint")
+        CASE(OPCODE_SLOW, "slow")
+        CASE(OPCODE_WFI, "wfi")
+        CASE(OPCODE_NOP, "nop")
+        CASE(OPCODE_VMSTART, "vmstart")
+        CASE(OPCODE_JZ, "jz")
+        CASE(OPCODE_JNZ, "jnz")
+        CASE(OPCODE_JCOND, "jcond")
+        CASE(OPCODE_LEA, "lea")
+        CASE(OPCODE_LDB, "ldb")
+        CASE(OPCODE_LDBS, "ldbs")
+        CASE(OPCODE_LDH, "ldh")
+        CASE(OPCODE_LDHS, "ldhs")
+        CASE(OPCODE_LDL, "ldl")
+        CASE(OPCODE_LDLS, "ldls")
+        CASE(OPCODE_LDQ, "ldq")
+        CASE(OPCODE_STB, "stb")
+        CASE(OPCODE_STH, "sth")
+        CASE(OPCODE_STL, "stl")
+        CASE(OPCODE_STQ, "stq")
+        CASE(OPCODE_RDTICK, "rdtick")
+        CASE(OPCODE_RDTICK1, "rdtick1")
+        CASE(OPCODE_RDTICK2, "rdtick2")
+    }
+    Assert(false);
+    return "unknown";
+}

@@ -41,6 +41,7 @@ typedef struct {
 #define parse_eof(CTX, ...) parse_eof(&CTX->parserContext, __VA_ARGS__)
 #define count_lines(CTX, ...) count_lines(&CTX->parserContext, __VA_ARGS__)
 #define get_char(CTX, ...) get_char(&CTX->parserContext, __VA_ARGS__)
+#define next_is_newline(CTX, ...) next_is_newline(&CTX->parserContext, __VA_ARGS__)
 
 int get_regnr(string name);
 
@@ -75,7 +76,7 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
         return LWM_ASM_ERROR_BAD;
     }
 
-    writeFile("temp.pp", out_text.ptr, out_text.len);
+    // writeFile("temp.pp", out_text.ptr, out_text.len);
 
     const char* text = out_text.ptr;
     int text_len = out_text.len;
@@ -156,6 +157,7 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
         if(data_bytes) {
             parse_space(context, &head);
 
+
             bool dynamic_length = false;
             uint64_t array_length = 0;
             if(get_char(context, head) == '[') {
@@ -166,6 +168,9 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                 int loc_int_head = head;
                 
                 int parsed_chars = parse_int(context, &head, &array_length);
+                if(!parsed_chars) {
+                    dynamic_length = true;
+                }
                 
                 // CHECK_EOF
                 char chr = get_char(context, head);
@@ -174,10 +179,7 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                         ERROR_SRC_RET(head, "Unexpected character '%c'\n",chr);
                     }
                 }
-                if(!parsed_chars) {
-                    dynamic_length = true;
-                }
-                if(parsed_chars && array_length == 0) {
+                if(!dynamic_length && array_length == 0) {
                     ERROR_SRC_RET(loc_int_head, "Array length of zero is not allowed.\n");
                 }
                 if(array_length < 0) {
@@ -185,24 +187,119 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                 }
                     
                 head++;
-                parse_space(context, &head);
+                parse_space_not_newline(context, &head);
             }
             
-            // @TODO parse array length
+            if (array_length || dynamic_length) {
+                int max_count = array_length <= 0 ? 100 : array_length;
+                
+                u8* bytes = malloc(max_count * data_bytes);
+                memset(bytes, 0, max_count * data_bytes);
 
-            if (array_length) {
+                // @TODO Check object limit
 
-            } else {
-                int prev_head = head;
-                uint64_t value;
-                int parsed_chars = parse_int(context, &head, &value);
-                if(parsed_chars) {
-                    LOG_SRC(prev_head, "Emit %d\n", (int)value);
+                Section* currentSection = &context->sections[context->sections_len-1];
+                Object* object = &currentSection->objects[currentSection->objects_len];
+                currentSection->objects_len++;
+
+                object->kind = OBJECT_DATA;
+                object->alignment = queuedAlignment;
+                queuedAlignment = 0;
+
+                int elementCount = 0;
+            
+                while (true) {
+                    if (elementCount == 0) {
+                        parse_space_not_newline(context, &head);
+                        if (next_is_newline(context, head)) {
+                            if (dynamic_length) {
+                                ERROR_SRC_RET(head, "Expected at least one value for dynamic array.\n.");
+                            }
+                            // Zeroed array
+                            head++;
+                            break;
+                        }
+                    } else {
+                        parse_space(context, &head);
+                    }
+
+                    int gotString = false;
+
+                    if (data_bytes == 1) {
+                        string str;
+                        parsed_chars = parse_string(context, &head, &str);
+                        if (parsed_chars) {
+                            if (elementCount + str.len > max_count) {
+                                int newMax = max_count * 2 + 10;
+                                void* newPtr = realloc(bytes, newMax * data_bytes);
+                                memset((char*)newPtr + max_count * data_bytes, 0, (newMax - max_count) * data_bytes);
+                                bytes = newPtr;
+                                max_count = newMax;
+                            }
+                            memcpy(bytes + elementCount, str.ptr, str.len);
+                            gotString = true;
+                            elementCount += str.len;
+                        } else {
+                            // Not a string, check char and integers
+                        }
+                    }
+                    
+                    if (!gotString) {
+                        uint64_t value;
+                        parsed_chars = parse_int(context, &head, &value);
+                        if(!parsed_chars) {
+                            parsed_chars = parse_char(context, &head, (char*)&value);
+                            if(!parsed_chars) {
+                                char chr = get_char(context, head);
+                                ERROR_SRC_RET(head, "Expected integer or char, not '%c'\n.", chr);
+                            }
+                        }
+                        if (elementCount + 1 > max_count) {
+                            int newMax = max_count * 2 + 10;
+                            void* newPtr = realloc(bytes, newMax * data_bytes);
+                            memset((char*)newPtr + max_count * data_bytes, 0, (newMax - max_count) * data_bytes);
+                            bytes = newPtr;
+                            max_count = newMax;
+                        }
+                        memcpy(bytes + elementCount * data_bytes, &value, data_bytes);
+                        elementCount++;
+                    }
+
+                    parse_space(context, &head);
+
+                    char chr = get_char(context, head);
+                    if(chr == ',') {
+                        head++;
+                        continue;
+                    } else {
+                        break;
+                    }
                 }
+                if (!dynamic_length && array_length != elementCount && elementCount != 0) {
+                    ERROR_SRC_RET(head, "Array length and element count mismatch! (%d != %d)\n.", (int)array_length, elementCount);
+                }
+                if (dynamic_length) {
+                    array_length = elementCount;
+                }
+                
+                object->dataobj.bytes = bytes;
+                object->dataobj.size = array_length * data_bytes;
+            } else {
                 array_length = 1;
 
-                u8* bytes = malloc(data_bytes);
-                memcpy(bytes, &value, data_bytes);
+                int prev_head = head;
+                uint64_t value;
+                u8* bytes = NULL;
+                int parsed_chars = parse_int(context, &head, &value);
+                if(!parsed_chars) {
+                    parsed_chars = parse_char(context, &head, (char*)&value);
+                }
+                if(parsed_chars) {
+                    bytes = malloc(data_bytes);
+                    memset(bytes, 0, data_bytes);
+                    memcpy(bytes, &value, data_bytes);
+                }
+
 
                 // @TODO Check object limit
 
@@ -242,6 +339,8 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
             int parsed_chars = parse_int(context, &head, &addr);
             if(parsed_chars) {
                 section->addr = addr;
+            } else {
+                ERROR_SRC_RET(head, "Expected an integer, not '%c'\n", get_char(context, head));
             }
 
             section->label_len = 0;
@@ -300,7 +399,7 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
         int operandIndex = 0;
 
         // Parse operands (if no newline and not EOF)
-        if ((get_char(context, head) != '\n' && get_char(context, head) != '\r') && !parse_eof(context, head)) {
+        if (!next_is_newline(context, head) && !parse_eof(context, head)) {
         while (true) {
             string operand;
             uint64_t value;
@@ -339,7 +438,6 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                     operandIndex++;
 
                     int parsedRegs = 0;
-                    int hasLabel = false;
 
                     while (true) {
 
@@ -351,6 +449,7 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
 
                         char chr = get_char(context, head);
                         if (chr == ']') {
+                            // @TODO Empty addressing is not allowed.
                             head++;
                             break;
                         }
@@ -370,10 +469,10 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                                 }
                                 parsedRegs++;
                             } else {
-                                if (hasLabel) {
+                                if (memoryOperand->label.len) {
                                     ERROR_SRC_RET(head, "Memory addressing is limited to one label.\n");
                                 } else {
-                                    memoryOperand->label = operand;
+                                    memoryOperand->label = word;
                                 }
                             }
                         } else {
@@ -385,8 +484,57 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                                 parsed_chars = parse_char(context, &head, &chrValue);
                                 if (parsed_chars) {
                                     memoryOperand->immediate += chrValue;
+                                } else {
+                                    char chr = get_char(context, head);
+                                    ERROR_SRC_RET(head, "Bad character in memory addressing '%c'.\n", chr);
                                 }
                             }
+                        }
+                        
+                        parse_space(context, &head);
+
+                        chr = get_char(context, head);
+                        if (chr == '+') {
+                            head++;
+                        }
+                    }
+
+                    if (memoryOperand->label.len) {
+                        if (parsedRegs == 0) {
+                            // Pick largest displacement since we don't know how far away the label is.
+                            memoryOperand->form = ADDRESSING_PC_DISP32;
+                        } else if (parsedRegs == 1) {
+                            memoryOperand->form = ADDRESSING_REG1_PC_DISP32;
+                        } else if (parsedRegs == 2) {
+                            ERROR_SRC_RET(head, "Memory addressing does not support 2 regs with labels.\n");
+                        }
+                    } else {
+                        int bits = 32 - lzcnt(abs(memoryOperand->immediate));
+                        if (parsedRegs == 0) {
+                            if (bits <= 15)
+                                memoryOperand->form = ADDRESSING_ABS16;
+                            else if (bits <= 31)
+                                memoryOperand->form = ADDRESSING_ABS32;
+                            else
+                                memoryOperand->form = ADDRESSING_ABS64;
+                        } else if (parsedRegs == 1) {
+                            if (bits <= 7)
+                                memoryOperand->form = ADDRESSING_REG1_DISP8;
+                            else if (bits <= 15)
+                                memoryOperand->form = ADDRESSING_REG1_DISP16;
+                            else if (bits <= 31)
+                                memoryOperand->form = ADDRESSING_REG1_DISP32;
+                            else
+                                memoryOperand->form = ADDRESSING_REG1_DISP64;
+                        } else if (parsedRegs == 2) {
+                            if (bits <= 7)
+                                memoryOperand->form = ADDRESSING_REG2_DISP8;
+                            else if (bits <= 15)
+                                memoryOperand->form = ADDRESSING_REG2_DISP16;
+                            else if (bits <= 31)
+                                memoryOperand->form = ADDRESSING_REG2_DISP32;
+                            else
+                                memoryOperand->form = ADDRESSING_REG2_DISP64;
                         }
                     }
 
@@ -414,7 +562,7 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
         if (equal(name, "mov")) {
             inst.opcode = OPCODE_OR;
             inst.operands[2].regnum = inst.operands[1].regnum;
-            inst.operands[1].regnum = inst.operands[0].regnum;
+            inst.operands[1].regnum = inst.operands[1].regnum;
         }
         else CASE_OPCODE("li", OPCODE_LI8)
         else CASE_OPCODE("call", OPCODE_CALL)
@@ -457,18 +605,18 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
         else CASE_OPCODE("wfi", OPCODE_WFI) 
         else CASE_OPCODE("nop", OPCODE_NOP) 
         else CASE_OPCODE("vmstart", OPCODE_VMSTART) 
-        else CASE_OPCODE("lea", OPCODE_LEA) 
-        else CASE_OPCODE("ldb", OPCODE_LDB) 
-        else CASE_OPCODE("ldbs", OPCODE_LDBS) 
-        else CASE_OPCODE("ldh", OPCODE_LDH) 
-        else CASE_OPCODE("ldhs", OPCODE_LDHS) 
-        else CASE_OPCODE("ldl", OPCODE_LDL) 
-        else CASE_OPCODE("ldls", OPCODE_LDLS) 
-        else CASE_OPCODE("ldq", OPCODE_LDQ) 
-        else CASE_OPCODE("stb", OPCODE_STB) 
-        else CASE_OPCODE("sth", OPCODE_STH) 
-        else CASE_OPCODE("stl", OPCODE_STL) 
-        else CASE_OPCODE("stq", OPCODE_STQ) 
+        else CASE_OPCODE2("lea", OPCODE_LEA, MEMOP_LEA) 
+        else CASE_OPCODE2("ldb", OPCODE_LDB, MEMOP_LDB) 
+        else CASE_OPCODE2("ldbs", OPCODE_LDBS, MEMOP_LDBS) 
+        else CASE_OPCODE2("ldh", OPCODE_LDH, MEMOP_LDH) 
+        else CASE_OPCODE2("ldhs", OPCODE_LDHS, MEMOP_LDHS) 
+        else CASE_OPCODE2("ldl", OPCODE_LDL, MEMOP_LDL) 
+        else CASE_OPCODE2("ldls", OPCODE_LDLS, MEMOP_LDLS) 
+        else CASE_OPCODE2("ldq", OPCODE_LDQ, MEMOP_LDQ) 
+        else CASE_OPCODE2("stb", OPCODE_STB, MEMOP_STB) 
+        else CASE_OPCODE2("sth", OPCODE_STH, MEMOP_STH) 
+        else CASE_OPCODE2("stl", OPCODE_STL, MEMOP_STL) 
+        else CASE_OPCODE2("stq", OPCODE_STQ, MEMOP_STQ) 
         else CASE_OPCODE("push", OPCODE_PUSH) 
         else CASE_OPCODE("pop", OPCODE_POP) 
         else CASE_OPCODE("tlbflush", OPCODE_TLBFLUSH) 
@@ -609,11 +757,16 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                 }
                 label->final_address = builder_head(builder);
                 checkLabelIndex++;
-                // printf("Update label %s 0x%x obj=%d\n", label->name.ptr, label->final_address, label->object_id);
+                // printf("Update label %s 0x%x obj=%d secaddr=0x%zx\n", label->name.ptr, label->final_address, label->object_id, section->addr);
             }
 
             if (object->kind == OBJECT_DATA) {
-                emit_bytes(builder, object->dataobj.bytes, object->dataobj.size);
+                Assert(object->dataobj.size != 0);
+                if (object->dataobj.bytes) {
+                    emit_bytes(builder, object->dataobj.bytes, object->dataobj.size);
+                } else {
+                    emit_zeros(builder, object->dataobj.size);
+                }
                 continue;
             }
 
@@ -625,8 +778,6 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                 emit_##op(builder, inst->operands[0].regnum, inst->operands[1].regnum)
             #define EMIT_REG1(op) \
                 emit_##op(builder, inst->operands[0].regnum)
-            #define EMIT_MEMOP(kind) \
-                emit_memop(builder, kind, inst->operands->form, inst->operands[0].regnum, inst->operands[1].reg_base, inst->operands[1].reg_index, inst->operands[1].immediate)
 
             switch (inst->opcode) {
                 case OPCODE_LI8: {
@@ -688,11 +839,132 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                     }
                 } break;
                 case OPCODE_JMP: {
+                    Operand* labelOperand = &inst->operands[0];
+                    if (labelOperand->label.len) {
+                        LabelFixup* fixup = &labelFixups[labelFixups_len];
+                        labelFixups_len++;
+
+                        Section* foundSection;
+                        Label* foundLabel;
+                        bool found = find_label(context, labelOperand->label.ptr, &foundSection, &foundLabel);
+                        if (found) {
+                            uint64_t pc = builder_head(builder);
+                            int64_t relative = foundLabel->estimated_address - pc;
+
+                            if (abs(relative) < 0x80) {
+                                emit_jmp8(builder, &fixup->rom_offset);
+                                fixup->reloc_size = 1;
+                            } else if (abs(relative) < 0x8000) {
+                                emit_jmp16(builder, &fixup->rom_offset);
+                                fixup->reloc_size = 2;
+                            } else {
+                                emit_jmp32(builder, &fixup->rom_offset);
+                                fixup->reloc_size = 4;
+                            }
+                            fixup->label = foundLabel;
+                        } else {
+                            ERROR_SRC_RET(inst->parseHead, "Label %s does not exist.\n", labelOperand->label.ptr);
+                        }
+                    } else {
+                        // Immediate
+                        Assert(false);
+                    }
                 } break;
                 case OPCODE_JZ: {
+                    Operand* labelOperand = &inst->operands[1];
+                    if (labelOperand->label.len) {
+                        LabelFixup* fixup = &labelFixups[labelFixups_len];
+                        labelFixups_len++;
+
+                        Section* foundSection;
+                        Label* foundLabel;
+                        bool found = find_label(context, labelOperand->label.ptr, &foundSection, &foundLabel);
+                        if (found) {
+                            uint64_t pc = builder_head(builder);
+                            int64_t relative = foundLabel->estimated_address - pc;
+
+                            if (abs(relative) < 0x80) {
+                                emit_jz8(builder, inst->operands[0].regnum, &fixup->rom_offset);
+                                fixup->reloc_size = 1;
+                            } else if (abs(relative) < 0x8000) {
+                                emit_jz16(builder, inst->operands[0].regnum, &fixup->rom_offset);
+                                fixup->reloc_size = 2;
+                            } else {
+                                emit_jz32(builder, inst->operands[0].regnum, &fixup->rom_offset);
+                                fixup->reloc_size = 4;
+                            }
+                            fixup->label = foundLabel;
+                        } else {
+                            ERROR_SRC_RET(inst->parseHead, "Label %s does not exist.\n", labelOperand->label.ptr);
+                        }
+                    } else {
+                        // Immediate
+                        Assert(false);
+                    }
                 } break;
                 case OPCODE_JNZ: {
-                // @TODO jlt, jge
+                    Operand* labelOperand = &inst->operands[1];
+                    if (labelOperand->label.len) {
+                        LabelFixup* fixup = &labelFixups[labelFixups_len];
+                        labelFixups_len++;
+
+                        Section* foundSection;
+                        Label* foundLabel;
+                        bool found = find_label(context, labelOperand->label.ptr, &foundSection, &foundLabel);
+                        if (found) {
+                            uint64_t pc = builder_head(builder);
+                            int64_t relative = foundLabel->estimated_address - pc;
+
+                            if (abs(relative) < 0x80) {
+                                emit_jnz8(builder, inst->operands[0].regnum, &fixup->rom_offset);
+                                fixup->reloc_size = 1;
+                            } else if (abs(relative) < 0x8000) {
+                                emit_jnz16(builder, inst->operands[0].regnum, &fixup->rom_offset);
+                                fixup->reloc_size = 2;
+                            } else {
+                                emit_jnz32(builder, inst->operands[0].regnum, &fixup->rom_offset);
+                                fixup->reloc_size = 4;
+                            }
+                            fixup->label = foundLabel;
+                        } else {
+                            ERROR_SRC_RET(inst->parseHead, "Label %s does not exist.\n", labelOperand->label.ptr);
+                        }
+                    } else {
+                        // Immediate
+                        Assert(false);
+                    }
+                } break;
+                case OPCODE_JCOND: {
+                    Operand* labelOperand = &inst->operands[2];
+                    if (labelOperand->label.len) {
+                        LabelFixup* fixup = &labelFixups[labelFixups_len];
+                        labelFixups_len++;
+
+                        Section* foundSection;
+                        Label* foundLabel;
+                        bool found = find_label(context, labelOperand->label.ptr, &foundSection, &foundLabel);
+                        if (found) {
+                            uint64_t pc = builder_head(builder);
+                            int64_t relative = foundLabel->estimated_address - pc;
+
+                            if (abs(relative) < 0x80) {
+                                emit_jcond8(builder, inst->sub_opcode, inst->operands[0].regnum, inst->operands[1].regnum, &fixup->rom_offset);
+                                fixup->reloc_size = 1;
+                            } else if (abs(relative) < 0x8000) {
+                                emit_jcond16(builder, inst->sub_opcode, inst->operands[0].regnum, inst->operands[1].regnum, &fixup->rom_offset);
+                                fixup->reloc_size = 2;
+                            } else {
+                                emit_jcond32(builder, inst->sub_opcode, inst->operands[0].regnum, inst->operands[1].regnum, &fixup->rom_offset);
+                                fixup->reloc_size = 4;
+                            }
+                            fixup->label = foundLabel;
+                        } else {
+                            ERROR_SRC_RET(inst->parseHead, "Label %s does not exist.\n", labelOperand->label.ptr);
+                        }
+                    } else {
+                        // Immediate
+                        Assert(false);
+                    }
                 } break;
                 case OPCODE_NOT: { EMIT_REG2(not);
                 } break;
@@ -746,29 +1018,58 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                 } break;
                 case OPCODE_VMSTART: { emit_vmstart(builder);
                 } break;
-                case OPCODE_LEA: {         EMIT_MEMOP(MEMOP_LEA);
-                } break;
-                case OPCODE_LDB: {         EMIT_MEMOP(MEMOP_LDB);
-                } break;
-                case OPCODE_LDBS: {       EMIT_MEMOP(MEMOP_LDBS);
-                } break;
-                case OPCODE_LDH: {         EMIT_MEMOP(MEMOP_LDH);
-                } break;
-                case OPCODE_LDHS: {       EMIT_MEMOP(MEMOP_LDHS);
-                } break;
-                case OPCODE_LDL: {         EMIT_MEMOP(MEMOP_LDL);
-                } break;
-                case OPCODE_LDLS: {       EMIT_MEMOP(MEMOP_LDLS);
-                } break;
-                case OPCODE_LDQ: {         EMIT_MEMOP(MEMOP_LDQ);
-                } break;
-                case OPCODE_STB: {         EMIT_MEMOP(MEMOP_STB);
-                } break;
-                case OPCODE_STH: {         EMIT_MEMOP(MEMOP_STH);
-                } break;
-                case OPCODE_STL: {         EMIT_MEMOP(MEMOP_STL);
-                } break;
-                case OPCODE_STQ: {         EMIT_MEMOP(MEMOP_STQ);
+                case OPCODE_LEA:
+                case OPCODE_LDB: 
+                case OPCODE_LDBS:
+                case OPCODE_LDH: 
+                case OPCODE_LDHS:
+                case OPCODE_LDL: 
+                case OPCODE_LDLS:
+                case OPCODE_LDQ: 
+                case OPCODE_STB: 
+                case OPCODE_STH: 
+                case OPCODE_STL: 
+                case OPCODE_STQ: {
+                    Operand* memoryOperand = &inst->operands[1];
+                    if (memoryOperand->label.len == 0) {
+                        emit_memop(builder, inst->sub_opcode, memoryOperand->form, inst->operands[0].regnum, memoryOperand->reg_base, memoryOperand->reg_index, memoryOperand->immediate, NULL);
+                    } else {
+                        LabelFixup* fixup = &labelFixups[labelFixups_len];
+                        labelFixups_len++;
+
+                        Section* foundSection;
+                        Label* foundLabel;
+                        bool found = find_label(context, memoryOperand->label.ptr, &foundSection, &foundLabel);
+                        if (found) {
+                            fixup->reloc_size = 4;
+
+                            uint64_t pc = builder_head(builder);
+                            int64_t relative = foundLabel->estimated_address - pc;
+
+                            if (abs(relative) < 0x80) {
+                                if (memoryOperand->form == ADDRESSING_PC_DISP32) {
+                                    // Shrink displacement since label is close.
+                                    memoryOperand->form = ADDRESSING_PC_DISP8;
+                                    fixup->reloc_size = 1;
+                                } else if (memoryOperand->form == ADDRESSING_REG1_PC_DISP32) {
+                                    memoryOperand->form = ADDRESSING_REG1_PC_DISP8;
+                                    fixup->reloc_size = 1;
+                                }
+                            } else if (abs(relative) < 0x8000) {
+                                  if (memoryOperand->form == ADDRESSING_PC_DISP32) {
+                                    memoryOperand->form = ADDRESSING_PC_DISP16;
+                                    fixup->reloc_size = 2;
+                                } else if (memoryOperand->form == ADDRESSING_REG1_PC_DISP32) {
+                                    memoryOperand->form = ADDRESSING_REG1_PC_DISP16;
+                                    fixup->reloc_size = 2;
+                                }
+                            }
+                            emit_memop(builder, inst->sub_opcode, memoryOperand->form, inst->operands[0].regnum, memoryOperand->reg_base, memoryOperand->reg_index, memoryOperand->immediate, &fixup->rom_offset);
+                            fixup->label = foundLabel;
+                        } else {
+                            ERROR_SRC_RET(inst->parseHead, "Label %s does not exist.\n", memoryOperand->label.ptr);
+                        }
+                    }
                 } break;
                 case OPCODE_PUSH: {       EMIT_REG1(push);
                 } break;
@@ -801,17 +1102,18 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
         int64_t relative = fixup->label->final_address - (fixup->rom_offset + fixup->reloc_size);
         if (fixup->reloc_size == 1) {
             if (abs(relative) >= 0x80) {
-                printf("Label fixup to big for rel%d (value %zd)\n", fixup->reloc_size*8, relative);
+                fprintf(stderr, "ERROR: Label fixup too big for rel%d (value %zd)\n", fixup->reloc_size*8, relative);
             }
             // printf("Fixup *0x%zx = %zd\n", fixup->rom_offset, relative);
-            *(int8_t*)(rom_ptr + fixup->rom_offset) = relative;
+            *(int8_t*)(rom_ptr + fixup->rom_offset) += relative;
         } else if (fixup->reloc_size == 2) {
             if (abs(relative) >= 0x8000) {
-                printf("Label fixup to big for rel%d (value %zd)\n", fixup->reloc_size*8, relative);
+                fprintf(stderr, "ERROR: Label fixup too big for rel%d (value %zd)\n", fixup->reloc_size*8, relative);
             }
-            *(int16_t*)(rom_ptr + fixup->rom_offset) = relative;
+            // printf("Fixup *0x%zx = 0x%zx (final 0x%zx)\n", fixup->rom_offset, relative, relative + fixup->rom_offset + fixup->reloc_size);
+            *(int16_t*)(rom_ptr + fixup->rom_offset) += relative;
         } else {
-            *(int32_t*)(rom_ptr + fixup->rom_offset) = relative;
+            *(int32_t*)(rom_ptr + fixup->rom_offset) += relative;
         }
 
     }

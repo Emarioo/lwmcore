@@ -12,6 +12,7 @@
 #include <assert.h>
 #include <setjmp.h>
 
+
 typedef struct {
     CoreState coreState;
     PlatformConfig* platformConfig;
@@ -46,39 +47,57 @@ typedef struct {
 
 #define REGISTER_BYTESIZE() (2 << emulator->coreState.mode)
 
-void fault(EmulatorContext* emulator) {
+void hard_fault(EmulatorContext* emulator) {
+    emulator->running = false;
     longjmp(emulator->loop_jmpbuf, 1);
 }
 
+void emulator_trigger_exception(EmulatorContext* emulator, int vector);
+void emulator_queue_interrupt(EmulatorContext* emulator, int vector);
 
 void check_registers(EmulatorContext* emulator, uint8_t* regs, int count) {
     uint64_t pc = emulator->coreState.pc;
     if (emulator->coreState.mode != MODE_16) {
         for (int i=0;i<count;i++) {
             if (regs[i] > 31) {
-                fprintf(stderr, "Exception ILLEGAL instruction at 0x%zx. Registers limited to 32 (found r%d)\n", pc, regs[i]);
-                fault(emulator);
+                printf("Exception ILLEGAL instruction at 0x%zx. Registers limited to 32 (found r%d)\n", pc, regs[i]);
+                emulator_trigger_exception(emulator, VECTOR_ILLEGAL_INSTRUCTION);
                 return;
             }
         }
     } else {
         for (int i=0;i<count;i++) {
             if (regs[i] > 15) {
-                fprintf(stderr, "Exception ILLEGAL instruction at 0x%zx. 16-bit mode, upper 16-bit register not available\n", pc);
-                fault(emulator);
+                printf("Exception ILLEGAL instruction at 0x%zx. 16-bit mode, upper 16-bit register not available\n", pc);
+                emulator_trigger_exception(emulator, VECTOR_ILLEGAL_INSTRUCTION);
                 return;
             }
         }
     }
 }
 
-bool write_address(EmulatorContext* emulator, uint64_t address, uint64_t size, void* data) {
+void check_privilege(EmulatorContext* emulator) {
+    if (emulator->coreState.crstatus & CRSTATUS_USER) {
+        // Tried to execute privileged instruction
+        emulator_trigger_exception(emulator, VECTOR_PROTECTION_FAULT);
+    }
+}
+
+void access_address(EmulatorContext* emulator, uint64_t address, uint64_t size) {
+    // printf("ACCESS 0x%zx\n", address);
+}
+
+bool write_address(EmulatorContext* emulator, uint64_t address, uint64_t size, void* data, bool physical) {
     CoreState* core = &emulator->coreState;
     
-    if (PAGING_ENABLED()) {
-        fprintf(stderr, "Paging not implemented at instruction fetch\n");
-        fault(emulator);
-        return false;
+    access_address(emulator, address, size);
+
+    if (!physical) {
+        if (PAGING_ENABLED()) {
+            printf("Paging not implemented at instruction fetch\n");
+            hard_fault(emulator);
+            return false;
+        }
     }
 
     for (int i=0;i<emulator->platformConfig->devices_len;i++) {
@@ -91,10 +110,10 @@ bool write_address(EmulatorContext* emulator, uint64_t address, uint64_t size, v
         }
     }
 
-    if (address + size > emulator->physicalMemory_size) {
-        // halt
-        fprintf(stderr, "Halt at 0x%zx, outside physical memory 0x%zx\n", address, emulator->physicalMemory_size);
-        fault(emulator);
+    // We must check both [address:address+size] because of integer overflow.
+    if (address > emulator->physicalMemory_size || address + size > emulator->physicalMemory_size) {
+        printf("BUS ERROR at 0x%zx, outside physical memory 0x%zx\n", address, emulator->physicalMemory_size);
+        emulator_trigger_exception(emulator, VECTOR_BUS_ERROR);
         return false;
     }
 
@@ -106,20 +125,22 @@ bool write_address(EmulatorContext* emulator, uint64_t address, uint64_t size, v
         default: Assert(false);
     }
 
-    // printf("ACCESS 0x%zx\n", address);
-
     return true;
 }
 
 
-bool read_address(EmulatorContext* emulator, uint64_t address, uint64_t size, void* data) {
+bool read_address(EmulatorContext* emulator, uint64_t address, uint64_t size, void* data, bool physical) {
+    CoreState* core = &emulator->coreState;
     // @TODO Add write/read access to check
 
-    CoreState* core = &emulator->coreState;
-    if (PAGING_ENABLED()) {
-        fprintf(stderr, "Paging not implemented at instruction fetch\n");
-        fault(emulator);
-        return false;
+    access_address(emulator, address, size);
+
+    if (!physical) {
+        if (PAGING_ENABLED()) {
+            printf("Paging not implemented at instruction fetch\n");
+            hard_fault(emulator);
+            return false;
+        }
     }
 
     for (int i=0;i<emulator->platformConfig->devices_len;i++) {
@@ -132,10 +153,9 @@ bool read_address(EmulatorContext* emulator, uint64_t address, uint64_t size, vo
         }
     }
 
-    if (address + size > emulator->physicalMemory_size) {
-        // halt
-        fprintf(stderr, "Halt at 0x%zx, outside physical memory 0x%zx\n", address, emulator->physicalMemory_size);
-        fault(emulator);
+    if (address > emulator->physicalMemory_size || address + size > emulator->physicalMemory_size) {
+        printf("BUS ERROR at 0x%zx, outside physical memory 0x%zx\n", address, emulator->physicalMemory_size);
+        emulator_trigger_exception(emulator, VECTOR_BUS_ERROR);
         return false;
     }
     
@@ -147,42 +167,40 @@ bool read_address(EmulatorContext* emulator, uint64_t address, uint64_t size, vo
         default: Assert(false);
     }
 
-    // printf("ACCESS 0x%zx\n", address);
-
     return true;
 }
 
 static inline uint8_t read_address8(EmulatorContext* emulator, uint64_t address) {
     uint8_t value;
-    read_address(emulator, address, 1, &value);
+    read_address(emulator, address, 1, &value, false);
     return value;
 }
 static inline uint16_t read_address16(EmulatorContext* emulator, uint64_t address) {
     uint16_t value;
-    read_address(emulator, address, 2, &value);
+    read_address(emulator, address, 2, &value, false);
     return value;
 }
 static inline uint32_t read_address32(EmulatorContext* emulator, uint64_t address) {
     uint32_t value;
-    read_address(emulator, address, 4, &value);
+    read_address(emulator, address, 4, &value, false);
     return value;
 }
 static inline uint64_t read_address64(EmulatorContext* emulator, uint64_t address) {
     uint64_t value;
-    read_address(emulator, address, 8, &value);
+    read_address(emulator, address, 8, &value, false);
     return value;
 }
 static inline void write_address8(EmulatorContext* emulator, uint64_t address, uint8_t value) {
-    write_address(emulator, address, 1, &value);
+    write_address(emulator, address, 1, &value, false);
 }
 static inline void write_address16(EmulatorContext* emulator, uint64_t address, uint16_t value) {
-    write_address(emulator, address, 2, &value);
+    write_address(emulator, address, 2, &value, false);
 }
 static inline void write_address32(EmulatorContext* emulator, uint64_t address, uint32_t value) {
-    write_address(emulator, address, 4, &value);
+    write_address(emulator, address, 4, &value, false);
 }
 static inline void write_address64(EmulatorContext* emulator, uint64_t address, uint64_t value) {
-    write_address(emulator, address, 8, &value);
+    write_address(emulator, address, 8, &value, false);
 }
 
 
@@ -198,13 +216,13 @@ int decode_form_reg1_imm(EmulatorContext* emulator, uint64_t pc, uint32_t opcode
     int immediateSize = 1 << (tmp_opcode - opcodeBase);
 
     if (immediateSize == 1)
-        *immediate = READ8(pc + 2);
+        *immediate = (int64_t)(int8_t)READ8(pc + 2);
     else if (immediateSize == 2)
-        *immediate = READ16(pc + 2);
+        *immediate = (int64_t)(int16_t)READ16(pc + 2);
     else if (immediateSize == 4)
-        *immediate = READ32(pc + 2);
+        *immediate = (int64_t)(int32_t)READ32(pc + 2);
     else if (immediateSize == 8)
-        *immediate = READ64(pc + 2);
+        *immediate = (int64_t)READ64(pc + 2);
 
     return 2 + immediateSize;
 }
@@ -274,11 +292,11 @@ int decode_form_pc(EmulatorContext* emulator, uint64_t pc, uint32_t opcodeBase, 
     int immediateSize = 1 << (tmp_opcode - opcodeBase);
 
     if (immediateSize == 1)
-        *immediate = READ8(pc + 1);
+        *immediate = (int8_t)READ8(pc + 1);
     else if (immediateSize == 2)
-        *immediate = READ16(pc + 1);
+        *immediate = (int16_t)READ16(pc + 1);
     else if (immediateSize == 4)
-        *immediate = READ32(pc + 1);
+        *immediate = (int32_t)READ32(pc + 1);
 
     return 1 + immediateSize;
 }
@@ -307,7 +325,7 @@ int decode_form_jmp_reg1(EmulatorContext* emulator, uint64_t pc, uint32_t* opcod
     else if (immediateSize == 4)
         *relative = (int32_t)READ32(pc + 2);
 
-    return 3 + immediateSize;
+    return 2 + immediateSize;
 }
 
 int decode_form_jmp_reg2(EmulatorContext* emulator, uint64_t pc, uint32_t* opcode, ConditionKind* cond, uint8_t regs[2], int32_t* relative) {
@@ -353,13 +371,11 @@ int decode_form_memory(EmulatorContext* emulator, uint64_t pc, uint32_t* opcode,
         [ opcode 8 | reg 5 | reg 5 | reg 5 | disp16 ]
         [ opcode 8 | reg 5 | reg 5 | reg 5 | disp32 ]
 
-    lea r0, [pc + disp32]
-        [ opcode 8 | reg 5 | disp32 ]
+    lea r0, [pc + disp8/16/32]
+        [ opcode 8 | reg 5 | disp8/16/64 ]
 
     lea r0, [16/32/64]
-        [ opcode 8 | reg 5 | disp16 ]
-        [ opcode 8 | reg 5 | disp32 ]
-        [ opcode 8 | reg 5 | disp64 ]
+        [ opcode 8 | reg 5 | disp16/32/64 ]
 
     All fields excluding flags
         [ opcode 8 | reg 5 | reg 5 | reg 5 | disp8/16/32/64 ]
@@ -382,83 +398,95 @@ int decode_form_memory(EmulatorContext* emulator, uint64_t pc, uint32_t* opcode,
     int flags = BITMASK(word, 0, 2);
     regs[0]   = BITMASK(word, 3, 7);
 
-    if (flags == 0) {
+    AddressingForm form = ADDRESSING_ENUM(flags, 0);
+    *addressingForm = form;
 
-        *addressingForm = ADDRESSING_ABS16;
+    if (form == ADDRESSING_ABS16) {
         *displacement = (int16_t)READ16(pc + 2);
-        return 4;
+        return largest_encoding(tmp_opcode, form);
 
-    } else if (flags == 1) {
-
-        *addressingForm = ADDRESSING_ABS32;
+    } else if (form == ADDRESSING_ABS32) {
         *displacement = (int32_t)READ32(pc + 2);
-        return 6;
+        return largest_encoding(tmp_opcode, form);
 
-    } else if (flags == 2) {
-
-        *addressingForm = ADDRESSING_ABS64;
+    } else if (form == ADDRESSING_ABS64) {
         *displacement = (int64_t)READ64(pc + 2);
-        return 10;
+        return largest_encoding(tmp_opcode, form);
 
-    } else if (flags == 3) {
+    } else if (form == ADDRESSING_REG1_DISP8) {
 
         uint8_t extraWord = (uint8_t)READ8(pc+2);
         int extraFlags = BITMASK(extraWord, 0, 2);
         regs[1]   = BITMASK(extraWord, 3, 7);
 
-        if (extraFlags == 0) {
-            *addressingForm = ADDRESSING_REG1_DISP8;
+        form = ADDRESSING_ENUM(flags, extraFlags);
+        *addressingForm = form;
+
+        if (form == ADDRESSING_REG1_DISP8) {
             *displacement = (int8_t)READ8(pc + 3);
-            return 4;
-        } else if (extraFlags == 1) {
-            *addressingForm = ADDRESSING_REG1_DISP16;
+            return largest_encoding(tmp_opcode, form);
+        } else if (form == ADDRESSING_REG1_DISP16) {
             *displacement = (int16_t)READ16(pc + 3);
-            return 5;
-        } else if (extraFlags == 2) {
-            *addressingForm = ADDRESSING_REG1_DISP32;
+            return largest_encoding(tmp_opcode, form);
+        } else if (form == ADDRESSING_REG1_DISP32) {
             *displacement = (int32_t)READ32(pc + 3);
-            return 7;
+            return largest_encoding(tmp_opcode, form);
+        } else if (form == ADDRESSING_REG1_DISP64) {
+            *displacement = (int64_t)READ64(pc + 3);
+            return largest_encoding(tmp_opcode, form);
+        } else if (form == ADDRESSING_REG1_PC_DISP8) {
+            *displacement = (int8_t)READ8(pc + 3);
+            return largest_encoding(tmp_opcode, form);
+        } else if (form == ADDRESSING_REG1_PC_DISP16) {
+            *displacement = (int16_t)READ16(pc + 3);
+            return largest_encoding(tmp_opcode, form);
+        } else if (form == ADDRESSING_REG1_PC_DISP32) {
+            *displacement = (int32_t)READ32(pc + 3);
+            return largest_encoding(tmp_opcode, form);
         } else {
-            // @TODO illegal instruction
-            assert(false);
+            emulator_trigger_exception(emulator, VECTOR_ILLEGAL_INSTRUCTION);
         }
 
-    } else if (flags == 4) {
+    } else if (form == ADDRESSING_REG2_DISP8) {
         
         uint16_t extraWord = (uint16_t)READ16(pc+2);
         int extraFlags = BITMASK(extraWord, 0, 2) | (BITMASK(extraWord, 8, 10) << 3);
         regs[1]   = BITMASK(extraWord, 3, 7);
         regs[2]   = BITMASK(extraWord, 11, 15);
+        
+        form = ADDRESSING_ENUM(flags, extraFlags);
+        *addressingForm = form;
 
-        if (extraFlags == 0) {
-            *addressingForm = ADDRESSING_REG2_DISP8;
+        if (form == ADDRESSING_REG2_DISP8) {
             *displacement = (int8_t)READ8(pc + 4);
-            return 5;
-        } else if (extraFlags == 1) {
-            *addressingForm = ADDRESSING_REG2_DISP16;
+            return largest_encoding(tmp_opcode, form);
+        } else if (form == ADDRESSING_REG2_DISP16) {
             *displacement = (int16_t)READ16(pc + 4);
-            return 6;
-        } else if (extraFlags == 2) {
-            *addressingForm = ADDRESSING_REG2_DISP32;
+            return largest_encoding(tmp_opcode, form);
+        } else if (form == ADDRESSING_REG2_DISP32) {
             *displacement = (int32_t)READ32(pc + 4);
-            return 8;
+            return largest_encoding(tmp_opcode, form);
         } else {
-            // @TODO illegal instruction
-            assert(false);
+            emulator_trigger_exception(emulator, VECTOR_ILLEGAL_INSTRUCTION);
         }
 
-    } else if (flags == 5) {
+    } else if (form == ADDRESSING_PC_DISP8) {
+        *displacement = (int8_t)READ8(pc + 2);
+        return largest_encoding(tmp_opcode, form);
         
-        *addressingForm = ADDRESSING_PC_DISP32;
+    } else if (form == ADDRESSING_PC_DISP16) {
+        *displacement = (int16_t)READ16(pc + 2);
+        return largest_encoding(tmp_opcode, form);
+        
+    } else if (form == ADDRESSING_PC_DISP32) {
         *displacement = (int32_t)READ32(pc + 2);
-        return 6;
+        return largest_encoding(tmp_opcode, form);
 
     } else {
-        // @TODO illegal instruction
-        assert(false);
+        emulator_trigger_exception(emulator, VECTOR_ILLEGAL_INSTRUCTION);
     }
 
-    fault(emulator);
+    emulator_trigger_exception(emulator, VECTOR_ILLEGAL_INSTRUCTION);
     return 0;
 }
 
@@ -499,9 +527,21 @@ void emulator_dump_state(EmulatorContext* emulator) {
 }
 
 
+static FILE* log_file;
+
 bool uart_mmio_write(uintptr_t address, size_t size, void* data) {
+    // printf("MMIO 0x%zx %zd %c\n", address, size, *(char*)data);
     if (size == 1 && address == 0x2000) {
         printf("%c", *(char*)data);
+        fflush(stdout);
+        return true;
+    }
+    if (size == 1 && address >= 0x3000 && address < 0x4000) {
+        if (!log_file) {
+            log_file = fopen("emu.log", "w");
+        }
+        fwrite(data, 1, 1, log_file);
+        fflush(log_file);
         return true;
     }
     return false;
@@ -510,6 +550,40 @@ bool uart_mmio_write(uintptr_t address, size_t size, void* data) {
 static HardwareDevice uart_device = {
     .mmio_write = uart_mmio_write   
 };
+
+
+void emulator_trigger_exception(EmulatorContext* emulator, int vector) {
+    if (emulator->coreState.insideFault) {
+        if (emulator->coreState.insideDoubleFault) {
+            printf("DOUBLE FAULT at 0x%zx\n", emulator->coreState.pc);
+            hard_fault(emulator);
+        }
+        emulator->coreState.insideDoubleFault = true;
+    } else {
+        emulator->coreState.insideFault = true;
+    }
+    emulator_queue_interrupt(emulator, vector);
+    longjmp(emulator->loop_jmpbuf, 1);
+}
+
+void emulator_queue_interrupt(EmulatorContext* emulator, int vector) {
+    CoreState* core = &emulator->coreState;
+
+    uint64_t ex_handler = 0;
+    int entrySize = core->mode == MODE_64 ? 8 : 4;
+    uint64_t eh_address = core->crvb + vector * entrySize;
+
+    printf("EH addr=0x%zx crvb=0x%zx\n", eh_address, core->crvb);
+
+    // @TODO If this fails then it's a triple fault.
+    read_address(emulator, eh_address, entrySize, &ex_handler, true);
+
+    core->crepc = core->pc;
+    core->crestatus = core->crstatus;
+    core->pc = ex_handler;
+
+    core->crstatus &= ~(CRSTATUS_USER|CRSTATUS_INTERRUPT);
+}
 
 void emulator_start(PlatformConfig* config) {
 
@@ -535,33 +609,50 @@ void emulator_start(PlatformConfig* config) {
 
     CoreState* core = &emulator->coreState;
 
+    core->crcpuid = 0;
+
     emulator->running = true;
 
-    printf("Start emulator\n");
+    if (!config->quiet) {
+        printf("Start emulator\n");
+    }
 
     while (emulator->running) {
+
+        core->tickCounter++;
+
+        if (core->tickCounter == core->crtimercmp) {
+            emulator_queue_interrupt(emulator, VECTOR_TIMER_INTERRUPT);
+        }
+
 
         int jmpResult = setjmp(emulator->loop_jmpbuf);
 
         if (jmpResult == 0) {
+            
             emulator_step(emulator);
-        } else {
-            // exception
-            emulator->running = false;
-            break;
-        }
 
+        } else {
+            // Exception/fault
+            continue;
+        }
     }
     
-    printf("Stop emulator\n");
-
-    emulator_dump_state(emulator);
+    if (!config->quiet) {
+        printf("Stop emulator\n");
+        emulator_dump_state(emulator);
+    }
 }
 
-#define INCOMPLETE_INST(...) do { fprintf(stderr, __VA_ARGS__); fault(emulator); } while (0)
+#define INCOMPLETE_INST(...) do { printf(__VA_ARGS__); hard_fault(emulator); } while (0)
+
+// #define LOG(FMT, ...)
+// #define LOG(FMT, ...) if (!emulator->platformConfig->quiet && emulator->platformConfig->verbose) { printf("0x%03zx: " FMT, pc __VA_OPT__(,) __VA_ARGS__); }
+#define LOG(FMT, ...) printf("0x%03zx: " FMT, pc __VA_OPT__(,) __VA_ARGS__);
 
 void emulator_step(EmulatorContext* emulator) {
     CoreState* core = &emulator->coreState;
+
 
     uint64_t pc = core->pc;
     uint8_t opcodeByte;
@@ -571,8 +662,8 @@ void emulator_step(EmulatorContext* emulator) {
 
     uint64_t next_pc = -1;
     uint8_t  regs[4];
-    uint64_t immediate;
-    int32_t  relative;
+    uint64_t immediate = 0;
+    int32_t  relative = 0;
     int      bytes;
 
     // printf("Opcode %d\n", opcodeByte);
@@ -594,6 +685,8 @@ void emulator_step(EmulatorContext* emulator) {
             core->gprs[regs[0]] = immediate;
 
             next_pc = pc + bytes;
+
+            LOG("li r%d, %zd\n", regs[0], immediate);
         } break;
         case OPCODE_CALL_REG:
         {
@@ -602,6 +695,8 @@ void emulator_step(EmulatorContext* emulator) {
 
             core->lr = pc + bytes;
             next_pc = core->gprs[regs[0]];
+
+            LOG("%s\n", opcode_to_string(opcode));
         } break;
         case OPCODE_JMP_REG:
         {
@@ -609,6 +704,8 @@ void emulator_step(EmulatorContext* emulator) {
             check_registers(emulator, regs, 1);
 
             next_pc = core->gprs[regs[0]];
+
+            LOG("%s\n", opcode_to_string(opcode));
         } break;
         case OPCODE_NOT:
         {
@@ -625,9 +722,13 @@ void emulator_step(EmulatorContext* emulator) {
             core->gprs[regs[0]] = result;
 
             next_pc = pc + bytes;
+
+            LOG("%s\n", opcode_to_string(opcode));
         } break;
         case OPCODE_MTCR:
         {
+            check_privilege(emulator);
+
             bytes = decode_form_reg2(emulator, pc, NULL, regs);
             // @TODO Check that control register is valid.
             check_registers(emulator, regs, 2);
@@ -635,9 +736,13 @@ void emulator_step(EmulatorContext* emulator) {
             core->crs[regs[0]] = core->gprs[regs[1]];
 
             next_pc = pc + bytes;
+
+            LOG("%s\n", opcode_to_string(opcode));
         } break;
         case OPCODE_MFCR:
         {
+            check_privilege(emulator);
+
             bytes = decode_form_reg2(emulator, pc, NULL, regs);
             // @TODO Check that control register is valid.
             check_registers(emulator, regs, 2);
@@ -645,6 +750,7 @@ void emulator_step(EmulatorContext* emulator) {
             core->gprs[regs[0]] = core->crs[regs[1]];
 
             next_pc = pc + bytes;
+            LOG("%s\n", opcode_to_string(opcode));
         } break;
         case OPCODE_ADD:
         case OPCODE_SUB:
@@ -704,6 +810,8 @@ void emulator_step(EmulatorContext* emulator) {
             core->gprs[regs[0]] = result;
 
             next_pc = pc + bytes;
+
+            LOG("%s r%d = %zd\n", opcode_to_string(opcode), regs[0], result);
         } break;
         case OPCODE_JMP:
         case OPCODE_JMP1:
@@ -712,6 +820,7 @@ void emulator_step(EmulatorContext* emulator) {
             bytes = decode_form_pc(emulator, pc, OPCODE_JMP, NULL, &relative);
 
             next_pc = pc + bytes + relative;
+            LOG("jmp\n");
         } break;
         case OPCODE_CALL:
         case OPCODE_CALL1:
@@ -719,36 +828,50 @@ void emulator_step(EmulatorContext* emulator) {
         {
             bytes = decode_form_pc(emulator, pc, OPCODE_CALL, NULL, &relative);
 
+
             core->lr = pc + bytes;
             next_pc = pc + bytes + relative;
+
+            // printf("call lr=0x%x pc=0x%x\n", (int)core->lr, (int)next_pc);
+            LOG("call lr=0x%zx\n", core->lr);
         } break;
         case OPCODE_RET:
         {
             next_pc = core->lr;
+            LOG("ret\n");
         } break;
         case OPCODE_NOP:
         {
             next_pc = pc + 1;
+            LOG("%s\n", opcode_to_string(opcode));
         } break;
         case OPCODE_PUSH:
         case OPCODE_POP:
         {
             bytes = decode_form_reg1(emulator, pc, NULL, regs);
             check_registers(emulator, regs, 1);
+
+            // printf("push/pop[%d]  %d 0x%x\n", opcode, regs[0], (int)pc);
             
             if (opcode == OPCODE_PUSH) {
                 core->sp -= REGISTER_BYTESIZE();
-            }
-            switch (emulator->coreState.mode) {
-                case MODE_16: WRITE16(core->sp, core->gprs[regs[0]]); break;
-                case MODE_32: WRITE32(core->sp, core->gprs[regs[0]]); break;
-                case MODE_64: WRITE64(core->sp, core->gprs[regs[0]]); break;
+                switch (emulator->coreState.mode) {
+                    case MODE_16: WRITE16(core->sp, core->gprs[regs[0]]); break;
+                    case MODE_32: WRITE32(core->sp, core->gprs[regs[0]]); break;
+                    case MODE_64: WRITE64(core->sp, core->gprs[regs[0]]); break;
+                }
             }
             if (opcode == OPCODE_POP) {
+                switch (emulator->coreState.mode) {
+                    case MODE_16: core->gprs[regs[0]] = READ16(core->sp); break;
+                    case MODE_32: core->gprs[regs[0]] = READ32(core->sp); break;
+                    case MODE_64: core->gprs[regs[0]] = READ64(core->sp); break;
+                }
                 core->sp += REGISTER_BYTESIZE();
             }
 
             next_pc = pc + bytes;
+            LOG("%s\n", opcode_to_string(opcode));
         } break;
         case OPCODE_RDTICK:
         case OPCODE_RDTICK1:
@@ -778,6 +901,8 @@ void emulator_step(EmulatorContext* emulator) {
             }
 
             next_pc = pc + bytes;
+
+            LOG("rdtick %zu, tc=%zu\n", core->gprs[regs[0]], tickCounter);
         } break;
         case OPCODE_JZ:
         case OPCODE_JNZ:
@@ -794,12 +919,12 @@ void emulator_step(EmulatorContext* emulator) {
                 result = (uint64_t)core->gprs[regs[0]];
             }
 
-            if ((result == 0) == (opcode == OPCODE_JNZ) ) {
+            if ((result == 0) == (opcode == OPCODE_JZ) ) {
                 next_pc = pc + bytes + relative;
             } else {
                 next_pc = pc + bytes;
             }
-
+            LOG("%s r%d = %zd\n", opcode_to_string(opcode), regs[0], result);
         } break;
         case OPCODE_JCOND:
         {
@@ -848,6 +973,7 @@ void emulator_step(EmulatorContext* emulator) {
             } else {
                 next_pc = pc + bytes;
             }
+            LOG("%s %d\n", opcode_to_string(opcode), result);
         } break;
         case OPCODE_LEA:
         case OPCODE_LDB:
@@ -867,7 +993,7 @@ void emulator_step(EmulatorContext* emulator) {
             bytes = decode_form_memory(emulator, pc, NULL, regs, &addressingForm, &displacement);
             check_registers(emulator, regs, 3);
 
-            uint64_t result = 0;
+            uint64_t result;
             uint64_t address;
 
             switch (addressingForm) {
@@ -882,15 +1008,24 @@ void emulator_step(EmulatorContext* emulator) {
                 case ADDRESSING_REG1_DISP8:
                 case ADDRESSING_REG1_DISP16:
                 case ADDRESSING_REG1_DISP32:
+                case ADDRESSING_REG1_DISP64:
                     address = core->gprs[regs[1]] + displacement;
                 break;
                 case ADDRESSING_REG2_DISP8:
                 case ADDRESSING_REG2_DISP16:
                 case ADDRESSING_REG2_DISP32:
+                case ADDRESSING_REG2_DISP64:
                     address = core->gprs[regs[1]] + core->gprs[regs[2]] + displacement;
                 break;
+                case ADDRESSING_PC_DISP8:
+                case ADDRESSING_PC_DISP16:
                 case ADDRESSING_PC_DISP32:
                     address = pc + bytes + displacement;
+                break;
+                case ADDRESSING_REG1_PC_DISP8:
+                case ADDRESSING_REG1_PC_DISP16:
+                case ADDRESSING_REG1_PC_DISP32:
+                    address = core->gprs[regs[1]] + pc + bytes + displacement;
                 break;
             }
 
@@ -911,66 +1046,110 @@ void emulator_step(EmulatorContext* emulator) {
                 case OPCODE_STQ:  WRITE64(address, (uint64_t)value); break;
             }
 
-            if (opcode >= OPCODE_LEA && OPCODE_LEA <= OPCODE_LDQ) {
-                core->gprs[regs[0]] = result;
-            }
-
             next_pc = pc + bytes;
+
+            if (opcode >= OPCODE_LEA && opcode <= OPCODE_LDQ) {
+                core->gprs[regs[0]] = result;
+                LOG("%s r%d = %zd, addr=0x%zx\n", opcode_to_string(opcode), regs[0], result, address);
+            } else {
+                LOG("%s r%d = %zd, addr=0x%zx\n", opcode_to_string(opcode), regs[0], value, address);
+            }
         } break;
-        
         case OPCODE_SYSCALL:
         {
-            INCOMPLETE_INST("TODO implement syscall\n");
+            pc = pc + 1; // We must set PC in here since trigger exception
+                         // moves it to CREPC
+            LOG("%s\n", opcode_to_string(opcode));
+            emulator_trigger_exception(emulator, VECTOR_SYSCALL);
         } break;
         case OPCODE_VRET:
         {
-            INCOMPLETE_INST("TODO implement vret\n");
+            check_privilege(emulator);
+
+            next_pc = core->crepc;
+            core->crstatus = core->crestatus;
+            
+            emulator->coreState.insideFault = false;
+            emulator->coreState.insideDoubleFault = false;
+            LOG("%s\n", opcode_to_string(opcode));
         } break;
         case OPCODE_DBG:
         {
-            INCOMPLETE_INST("TODO implement dbg\n");
+            pc = pc + 1; // We must set PC in here since trigger exception
+                         // moves it to CREPC
+            LOG("%s\n", opcode_to_string(opcode));
+            emulator_trigger_exception(emulator, VECTOR_BREAKPOINT);
         } break;
         case OPCODE_EINT:
         {
-            INCOMPLETE_INST("TODO implement eint\n");
+            check_privilege(emulator);
+
+            core->crstatus |= CRSTATUS_INTERRUPT;
+
+            next_pc = pc + 1;
+            LOG("%s\n", opcode_to_string(opcode));
         } break;
         case OPCODE_DINT:
         {
-            INCOMPLETE_INST("TODO implement dint\n");
+            check_privilege(emulator);
+
+            core->crstatus &= ~CRSTATUS_INTERRUPT;
+
+            next_pc = pc + 1;
+            LOG("%s\n", opcode_to_string(opcode));
         } break;
         case OPCODE_SLOW:
         {
-            INCOMPLETE_INST("TODO implement slow\n");
+            // @TODO Proper implement of slow
+
+            LOG("%s\n", opcode_to_string(opcode));
+            sleep_us(100000);
+            
+            next_pc = pc + 1;
         } break;
         case OPCODE_WFI:
         {
+            check_privilege(emulator);
+
+            LOG("%s\n", opcode_to_string(opcode));
             INCOMPLETE_INST("TODO implement wfi\n");
         } break;
         case OPCODE_TLBFLUSH:
         {
+            check_privilege(emulator);
+
+            LOG("%s\n", opcode_to_string(opcode));
             INCOMPLETE_INST("TODO implement tlbflush\n");
         } break;
         case OPCODE_CPUFEAT:
         {
+            LOG("%s\n", opcode_to_string(opcode));
             INCOMPLETE_INST("TODO implement cpufeat\n");
         } break;
         case OPCODE_VMSTART:
         {
+            check_privilege(emulator);
+
+            LOG("%s\n", opcode_to_string(opcode));
             INCOMPLETE_INST("TODO implement vmstart\n");
         } break;
         default: {
-            fprintf(stderr, "Exception ILLEGAL instruction at 0x%zx. Unknown opcode %d\n", pc, opcode);
-            fault(emulator);
+            printf("Exception ILLEGAL instruction at 0x%zx. Unknown opcode %d\n", pc, opcode);
+            emulator_trigger_exception(emulator, VECTOR_ILLEGAL_INSTRUCTION);
         }
     }
 
     if (emulator->running) {
         if (core->pc == next_pc) {
-            fprintf(stderr, "WARNING: Executing same instruction %zx?\n", next_pc);
+            // @TODO Quit if this happens to often?
+            //   Maybe you did a spinloop? Maybe quit unless you called slow or wfi?
+            printf("WARNING: Executing same instruction %zx?\n", next_pc);
         }
         core->pc = next_pc;
     }
 
+    
+    // sleep_us(100 * 1000);
 }
 
 
@@ -988,8 +1167,9 @@ char tohex(int x) {
 // @TODO Disassemble at a specific position
 
 void dump(PlatformConfig* config) {
-    printf("Core entry: %zu\n", config->core_entry);
     uint8_t* rom = config->rom;
+
+    printf("Core entry: %zu\n", config->core_entry);
 
     int stride = 4;
     

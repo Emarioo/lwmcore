@@ -10,6 +10,8 @@ typedef struct {
     // include paths
     // cpu options
 
+    bool quiet;
+
     // output options
     const char* outputPath;
     void* rom;

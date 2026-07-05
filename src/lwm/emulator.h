@@ -26,6 +26,10 @@ typedef struct {
 
     uint64_t crs[32];
 
+    // bool insideInterrupt;
+    bool insideFault;
+    bool insideDoubleFault;
+
     #define crstatus crs[0]
     #define crvb     crs[1]
     #define crpt     crs[2]
@@ -34,6 +38,7 @@ typedef struct {
     #define crfault  crs[5]
     #define crcpuid  crs[6]
     #define crtimercmp  crs[7]
+    #define crestatus  crs[8]
 
     uint64_t tickCounter;
 
@@ -51,6 +56,9 @@ typedef struct {
     uint64_t core_entry;
     void*    rom;
     int      rom_len;
+
+    bool quiet;
+    bool verbose;
 
     int              devices_len;
     HardwareDevice** devices;

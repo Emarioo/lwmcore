@@ -98,7 +98,7 @@ void emit_rdtick2(Builder* builder, int reg0, int reg1, int reg2, int reg3);
 
 
 
-void emit_memop(Builder* builder, MemoryInstructionKind kind, AddressingForm form, int reg0, int reg_base, int reg_index, int64_t in_displacement);
+void emit_memop(Builder* builder, MemoryInstructionKind kind, AddressingForm form, int reg0, int reg_base, int reg_index, int64_t displacement, uint64_t* fixup);
 
 void emit_jmp32(Builder* builder, uint64_t* fixup);
 void emit_jmp16(Builder* builder, uint64_t* fixup);
@@ -108,7 +108,15 @@ void emit_call32(Builder* builder, uint64_t* fixup);
 void emit_call16(Builder* builder, uint64_t* fixup);
 void emit_call8(Builder* builder, uint64_t* fixup);
 
-void emit_jz(Builder* builder, int reg0, int32_t** relative);
-void emit_jnz(Builder* builder, int reg0, int32_t** relative);
-void emit_jcond(Builder* builder, ConditionKind kind, int reg0, int reg1, int32_t** relative);
+void emit_jz8(Builder* builder, int reg0, uint64_t* fixup);
+void emit_jz16(Builder* builder, int reg0, uint64_t* fixup);
+void emit_jz32(Builder* builder, int reg0, uint64_t* fixup);
+
+void emit_jnz8(Builder* builder, int reg0, uint64_t* fixup);
+void emit_jnz16(Builder* builder, int reg0, uint64_t* fixup);
+void emit_jnz32(Builder* builder, int reg0, uint64_t* fixup);
+
+void emit_jcond8(Builder* builder, ConditionKind kind, int reg0, int reg1, uint64_t* fixup);
+void emit_jcond16(Builder* builder, ConditionKind kind, int reg0, int reg1, uint64_t* fixup);
+void emit_jcond32(Builder* builder, ConditionKind kind, int reg0, int reg1, uint64_t* fixup);
 

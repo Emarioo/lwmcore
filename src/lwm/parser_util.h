@@ -70,6 +70,12 @@ static inline int parse_eof(ParserContext* context, int inout_head) {
     return inout_head >= context->text_len;
 }
 
+static inline bool next_is_newline(ParserContext* context, int inout_head) {
+    if (inout_head >= context->text_len)
+        return false;
+    return context->text[inout_head] == '\r' || context->text[inout_head] == '\n';
+}
+
 static inline char get_char(ParserContext* context, int inout_head) {
     if (inout_head >= context->text_len)
         return 0;

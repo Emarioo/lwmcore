@@ -79,7 +79,7 @@ mtcr CRSTATUS, r1
 @TODO Show how to initialize page tables and flags
 
 
-# Exceptions
+# Exceptions and predefined interrupts
 
 Exceptions are generated when the CPU encounters a state that must be handled by the kernel.
 The CPU will look in a vector table specified by the control register CRVB. The vector table has 64 entries where each entry is 32 bits on 16/32-bit CPU and 64 bits on 64-bit CPU. Each entry refers to a physical address the CPU will jump to when an exception occurs.
@@ -90,12 +90,13 @@ The handler itself can acquire information about the exception through these con
 |----------|---------|
 | CREPC    | Exception return address |
 | CRCAUSE  | Exception/interrupt cause |
-| CRFAULT  | Faulting address |
+| CRFAULT  | Page faulting address |
 | CRCPUID  | Current CPU ID |
 
 ## Vectors
 
 |Number|Name|Description|
+|-|-|-|
 |0|Reserved||
 |1|Illegal Instruction|Unknown instruction, invalid opcode, invalid operands, addressing modes|
 |2|Protection Fault||
@@ -105,8 +106,136 @@ The handler itself can acquire information about the exception through these con
 |6|Syscall|Occurs when the 'syscall' instruction is executed.|
 |7|Division by Zero||
 |8|Breakpoint|Occurs when the 'dbg' instruction is executed.|
-|9-31|Reserved||
+|9|Timer interrupt|Triggered when CRTIMERCMP becomes equal to tick counter|
+|10|Bus Error|Transaction for physical address could not be completed. Or similar bus device errors.|
+|11|Fatal Machine Error|A serious error happened in the machine and kernel should panic.|
+|12-31|Reserved||
 |32-63|External interrupts||
+
+### Illegal Instruction
+
+Bytes at the program counter cannot be decoded into a valid instruction.
+
+- `CREPC` will hold the program counter at which the illegal instruction begins.
+- `CRCAUSE` describes details around who caused the syscall (user/supervisor).
+
+|CRCAUSE bit|Reason|Description|
+|-|-|-|
+|0|Reserved||
+|1|User|Set according to the user bit in CRSTATUS.|
+
+### Protection Fault
+
+User tried to execute a privileged instruction.
+
+- `CREPC` holds the program counter to the instruction that caused the fault.
+
+
+### Page Fault
+
+Only occurs when the paging bit in CRSTATUS is set.
+
+The fault is caused by a disallowed access to a virtual address.
+
+- `CREPC` will hold the program counter where the instruction causing the page fault begins.
+- `CRFAULT` contains the virtual address that was denied.
+- `CRCAUSE` describes the reason for the fault.
+
+|CRCAUSE bit|Reason|Description|
+|-|-|-|
+|0|Not present|Address is not mapped in the page table.|
+|1|Denied user|The CPU is in User mode and the address has the User bit cleared requiring Supervisor mode to access it.|
+|2|Denied write|A write to the address was denied because write bit in page entry is cleared.|
+|3|Denied execute|An instruction decode on the address was denied because execute bit in page entry is cleared.|
+
+### Double Fault
+
+**WIP**
+
+Occurs when a fault is triggered inside the exception handler. CPU considers execution inside a handler from the moment the CPU
+jumps into the handler to when the `vret` instruction is executed.
+
+What if you enable interrupts inside exception handler and get one? Are we still inside exception handler? If not then if you vret
+do we jump back to exception handler? Is that allowed? Can `dint` not disable interrupts if we are in exception handler until you do `vret`?
+
+Do we consider ourselves inside an exception handler on interrupts. We should not trigger a double fault so probably not?
+
+### Misaligned Access
+
+An instruction was executed that requires aligned access to memory. Cannot occur for instructions that access a byte.
+Will happen for instruction that write/read 32-bit integers at a time for example.
+
+- `CREPC` holds the program counter of the instruction that caused the fault.
+- `CRFAULT` contains the misaligned address.
+- `CRCAUSE` describes details around who caused the syscall (user/supervisor).
+
+|CRCAUSE bit|Reason|Description|
+|-|-|-|
+|0|Reserved||
+|1|User|Set according to the user bit in CRSTATUS.|
+
+
+### Syscall
+
+Is triggered when the syscall instruction is executed. The jump occurs once the syscall instruction completes.
+
+- `CREPC` will hold the program counter to the next instruction that shall be executed.
+- `CRCAUSE` describes details around who caused the syscall (user/supervisor).
+
+|CRCAUSE bit|Reason|Description|
+|-|-|-|
+|0|Reserved||
+|1|User|Set according to the user bit in CRSTATUS.|
+
+
+### Division by Zero
+
+Is triggered when `udiv`, `sdiv`, `umod`, or `smod` divides a value by zero.
+
+- `CREPC` holds the program counter of the instruction that caused the fault.
+- `CRCAUSE` describes details around who caused the fault (user/supervisor).
+
+|CRCAUSE bit|Reason|Description|
+|-|-|-|
+|0|Reserved||
+|1|User|Set according to the user bit in CRSTATUS.|
+
+### Breakpoint
+
+Is triggered when `dbg` is executed.
+
+- `CREPC` holds the program counter of the `dbg` instruction that caused the fault.
+- `CRCAUSE` describes details around who caused the fault (user/supervisor).
+
+|CRCAUSE bit|Reason|Description|
+|-|-|-|
+|0|Reserved||
+|1|User|Set according to the user bit in CRSTATUS.|
+
+### Timer Interrupt
+
+Is triggered when CRTIMERCMP is equal to tick counter. The jump to the timer interrupt vector does not occur until
+the current instruction has been completed.
+
+- `CREPC` will hold the program counter to the next instruction that shall be executed.
+- `CRCAUSE` describes details around who caused the fault (user/supervisor).
+
+|CRCAUSE bit|Reason|Description|
+|-|-|-|
+|0|Reserved||
+|1|User|Set according to the user bit in CRSTATUS.|
+
+### Bus Error
+
+Is triggered when a transaction on the bus for physical address could not be completed.
+
+- `CREPC` holds the program counter to instruction that caused the fault, or rather during which instruction the fault occured.
+
+### Fatal Machine Error
+
+The machine encountered an unrecoverable error. You should log useful information before computer crashes.
+
+- `CREPC` holds the program counter to instruction that caused the fault, or rather during which instruction the fault occured.
 
 ## Setting up exceptions
 
@@ -385,7 +514,7 @@ Note that 16-bit CPU only has 16 registers.
 | CRPT | Root page table |
 | CREPC | Exception return address |
 | CRCAUSE | Exception/interrupt cause |
-| CRFAULT | Faulting address |
+| CRFAULT | Page faulting address |
 | CRCPUID | Current CPU ID |
 | CRTIMERCMP | Timer Compare Target |
 

@@ -12,6 +12,7 @@ void print_help() {
     printf("  -f,--force      : Will overwrite user made subassembly.\n");
     printf("  -s <path>       : Generate encoder from scheme.\n");
     printf("  --safe          : Don't write any files, log which ones would have been written to.\n");
+    printf("  -q,--quiet      : Turn off log messages.\n");
 }
 
 int main(int argc, const char** argv) {
@@ -23,6 +24,8 @@ int main(int argc, const char** argv) {
     bool do_rom = false;
     bool do_scheme = false;
     bool overwrite_user_subassembly = false;
+    bool be_quiet = false;
+    bool verbose = false;
 
     for(int i=1;i<argc;i++) {
         const char* arg = argv[i];
@@ -54,6 +57,10 @@ int main(int argc, const char** argv) {
             overwrite_user_subassembly = true;
         } else if(!strcmp(arg, "--safe")) {
             DISABLE_FILE_WRITES = true;
+        } else if(!strcmp(arg, "-q") || !strcmp(arg, "--quiet")) {
+            be_quiet = true;
+        } else if(!strcmp(arg, "-d")) {
+            verbose = true;
         } else if(!strcmp(arg, "-s")) {
             if(i+1 >= argc) {
                 error("Missing argument after '%s'\n", arg);
@@ -115,7 +122,8 @@ int main(int argc, const char** argv) {
     }
 
     PlatformConfig config = {0};
-
+    config.quiet = be_quiet;
+    config.verbose = verbose;
 
     if(file_is_subassembly) {
         BlotterData* data = decompose_blotter_file(assembly_file);
@@ -137,6 +145,7 @@ int main(int argc, const char** argv) {
         buffer.ptr[buffer.len] = 0;
         
         AssemblerOptions options = {0};
+        options.quiet = be_quiet;
         options.sourcePath = assembly_file.ptr;
         if (bin_file.len) {
             options.outputPath = bin_file.ptr;
@@ -147,7 +156,10 @@ int main(int argc, const char** argv) {
 
         config.rom = options.rom;
         config.rom_len = options.rom_len;
-        dump(&config);
+
+        if (!config.quiet) {
+            dump(&config);
+        }
     } else if(file_is_bin) {
         FILE* file = fopen(assembly_file.ptr, "rb");
         if (!file) {

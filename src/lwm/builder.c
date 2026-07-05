@@ -223,27 +223,25 @@ static inline int memop_to_opcode(MemoryInstructionKind kind) {
     return OPCODE_LEA + kind - MEMOP_LEA;
 }
 
-void emit_memop(Builder* builder, MemoryInstructionKind kind, AddressingForm form, int reg0, int reg_base, int reg_index, int64_t in_displacement) {
+void emit_memop(Builder* builder, MemoryInstructionKind kind, AddressingForm form, int reg0, int reg_base, int reg_index, int64_t in_displacement, uint64_t* fixup) {
     int opcode = memop_to_opcode(kind);
 
     int64_t displacement = in_displacement;
 
     switch (form) {
         case ADDRESSING_ABS16: {
-            int flags = 0;
             uint8_t bytes[] = {
                 opcode,
-                (reg0 << 3) | flags,
+                (reg0 << 3) | ADDRESSING_MASK_PRI(form),
                 displacement & 0xFF,
                 (displacement >> 8) & 0xFF,
             };
             APPEND_BYTES(bytes);
         } break;
         case ADDRESSING_ABS32: {
-            int flags = 1;
             uint8_t bytes[] = {
                 opcode,
-                (reg0 << 3) | flags,
+                (reg0 << 3) | ADDRESSING_MASK_PRI(form),
                 (displacement >> 0) & 0xFF,
                 (displacement >> 8) & 0xFF,
                 (displacement >> 16) & 0xFF,
@@ -252,10 +250,9 @@ void emit_memop(Builder* builder, MemoryInstructionKind kind, AddressingForm for
             APPEND_BYTES(bytes);
         } break;
         case ADDRESSING_ABS64: {
-            int flags = 2;
             uint8_t bytes[] = {
                 opcode,
-                (reg0 << 3) | flags,
+                (reg0 << 3) | ADDRESSING_MASK_PRI(form),
                 (displacement >> 0) & 0xFF,
                 (displacement >> 8) & 0xFF,
                 (displacement >> 16) & 0xFF,
@@ -268,35 +265,29 @@ void emit_memop(Builder* builder, MemoryInstructionKind kind, AddressingForm for
             APPEND_BYTES(bytes);
         } break;
         case ADDRESSING_REG1_DISP8: {
-            int flags = 3;
-            int extraFlags = 0;
             uint8_t bytes[] = {
                 opcode,
-                (reg0 << 3) | flags,
-                (reg_base << 3) | extraFlags,
+                (reg0 << 3) | ADDRESSING_MASK_PRI(form),
+                (reg_base << 3) | ADDRESSING_MASK_SEC(form),
                 (displacement >> 0) & 0xFF,
             };
             APPEND_BYTES(bytes);
         } break;
         case ADDRESSING_REG1_DISP16: {
-            int flags = 3;
-            int extraFlags = 1;
             uint8_t bytes[] = {
                 opcode,
-                (reg0 << 3) | flags,
-                (reg_base << 3) | extraFlags,
+                (reg0 << 3) | ADDRESSING_MASK_PRI(form),
+                (reg_base << 3) | ADDRESSING_MASK_SEC(form),
                 (displacement >> 0) & 0xFF,
                 (displacement >> 8) & 0xFF,
             };
             APPEND_BYTES(bytes);
         } break;
         case ADDRESSING_REG1_DISP32: {
-            int flags = 3;
-            int extraFlags = 2;
             uint8_t bytes[] = {
                 opcode,
-                (reg0 << 3) | flags,
-                (reg_base << 3) | extraFlags,
+                (reg0 << 3) | ADDRESSING_MASK_PRI(form),
+                (reg_base << 3) | ADDRESSING_MASK_SEC(form),
                 (displacement >> 0) & 0xFF,
                 (displacement >> 8) & 0xFF,
                 (displacement >> 16) & 0xFF,
@@ -304,39 +295,83 @@ void emit_memop(Builder* builder, MemoryInstructionKind kind, AddressingForm for
             };
             APPEND_BYTES(bytes);
         } break;
-        case ADDRESSING_REG2_DISP8: {
-            int flags = 4;
-            int extraFlags = 0;
+        case ADDRESSING_REG1_DISP64: {
             uint8_t bytes[] = {
                 opcode,
-                (reg0 << 3) | flags,
-                (reg_base << 3) | (extraFlags & 0x7),
-                (reg_index << 3) | ((extraFlags >> 3) & 0x7),
+                (reg0 << 3) | ADDRESSING_MASK_PRI(form),
+                (reg_base << 3) | ADDRESSING_MASK_SEC(form),
+                (displacement >> 0) & 0xFF,
+                (displacement >> 8) & 0xFF,
+                (displacement >> 16) & 0xFF,
+                (displacement >> 24) & 0xFF,
+                (displacement >> 32) & 0xFF,
+                (displacement >> 40) & 0xFF,
+                (displacement >> 48) & 0xFF,
+                (displacement >> 56) & 0xFF,
+            };
+            APPEND_BYTES(bytes);
+        } break;
+        case ADDRESSING_REG1_PC_DISP8: {
+            uint8_t bytes[] = {
+                opcode,
+                (reg0 << 3) | ADDRESSING_MASK_PRI(form),
+                (reg_base << 3) | ADDRESSING_MASK_SEC(form),
+                (displacement >> 0) & 0xFF,
+            };
+            APPEND_BYTES(bytes);
+            *fixup = builder->byteStream_len - 1;
+        } break;
+        case ADDRESSING_REG1_PC_DISP16: {
+            uint8_t bytes[] = {
+                opcode,
+                (reg0 << 3) | ADDRESSING_MASK_PRI(form),
+                (reg_base << 3) | ADDRESSING_MASK_SEC(form),
+                (displacement >> 0) & 0xFF,
+                (displacement >> 8) & 0xFF,
+            };
+            APPEND_BYTES(bytes);
+            *fixup = builder->byteStream_len - 2;
+        } break;
+        case ADDRESSING_REG1_PC_DISP32: {
+            uint8_t bytes[] = {
+                opcode,
+                (reg0 << 3) | ADDRESSING_MASK_PRI(form),
+                (reg_base << 3) | ADDRESSING_MASK_SEC(form),
+                (displacement >> 0) & 0xFF,
+                (displacement >> 8) & 0xFF,
+                (displacement >> 16) & 0xFF,
+                (displacement >> 24) & 0xFF,
+            };
+            APPEND_BYTES(bytes);
+            *fixup = builder->byteStream_len - 4;
+        } break;
+        case ADDRESSING_REG2_DISP8: {
+            uint8_t bytes[] = {
+                opcode,
+                (reg0 << 3) | ADDRESSING_MASK_PRI(form),
+                (reg_base << 3) | (ADDRESSING_MASK_SEC(form) & 0x7),
+                (reg_index << 3) | ((ADDRESSING_MASK_SEC(form) >> 3) & 0x7),
                 (displacement >> 0) & 0xFF,
             };
             APPEND_BYTES(bytes);
         } break;
         case ADDRESSING_REG2_DISP16: {
-            int flags = 4;
-            int extraFlags = 1;
             uint8_t bytes[] = {
                 opcode,
-                (reg0 << 3) | flags,
-                (reg_base << 3) | (extraFlags & 0x7),
-                (reg_index << 3) | ((extraFlags >> 3) & 0x7),
+                (reg0 << 3) | ADDRESSING_MASK_PRI(form),
+                (reg_base << 3) | (ADDRESSING_MASK_SEC(form) & 0x7),
+                (reg_index << 3) | ((ADDRESSING_MASK_SEC(form) >> 3) & 0x7),
                 (displacement >> 0) & 0xFF,
                 (displacement >> 8) & 0xFF,
             };
             APPEND_BYTES(bytes);
         } break;
         case ADDRESSING_REG2_DISP32: {
-            int flags = 4;
-            int extraFlags = 2;
             uint8_t bytes[] = {
                 opcode,
-                (reg0 << 3) | flags,
-                (reg_base << 3) | (extraFlags & 0x7),
-                (reg_index << 3) | ((extraFlags >> 3) & 0x7),
+                (reg0 << 3) | ADDRESSING_MASK_PRI(form),
+                (reg_base << 3) | (ADDRESSING_MASK_SEC(form) & 0x7),
+                (reg_index << 3) | ((ADDRESSING_MASK_SEC(form) >> 3) & 0x7),
                 (displacement >> 0) & 0xFF,
                 (displacement >> 8) & 0xFF,
                 (displacement >> 16) & 0xFF,
@@ -344,17 +379,36 @@ void emit_memop(Builder* builder, MemoryInstructionKind kind, AddressingForm for
             };
             APPEND_BYTES(bytes);
         } break;
-        case ADDRESSING_PC_DISP32: {
-            int flags = 5;
+        case ADDRESSING_PC_DISP8: {
             uint8_t bytes[] = {
                 opcode,
-                (reg0 << 3) | flags,
+                (reg0 << 3) | ADDRESSING_MASK_PRI(form),
+                (displacement >> 0) & 0xFF,
+            };
+            APPEND_BYTES(bytes);
+            *fixup = builder->byteStream_len - 1;
+        } break;
+        case ADDRESSING_PC_DISP16: {
+            uint8_t bytes[] = {
+                opcode,
+                (reg0 << 3) | ADDRESSING_MASK_PRI(form),
+                (displacement >> 0) & 0xFF,
+                (displacement >> 8) & 0xFF,
+            };
+            APPEND_BYTES(bytes);
+            *fixup = builder->byteStream_len - 2;
+        } break;
+        case ADDRESSING_PC_DISP32: {
+            uint8_t bytes[] = {
+                opcode,
+                (reg0 << 3) | ADDRESSING_MASK_PRI(form),
                 (displacement >> 0) & 0xFF,
                 (displacement >> 8) & 0xFF,
                 (displacement >> 16) & 0xFF,
                 (displacement >> 24) & 0xFF,
             };
             APPEND_BYTES(bytes);
+            *fixup = builder->byteStream_len - 4;
         } break;
         default:
             Assert(false);
@@ -376,7 +430,7 @@ void emit_jmp16(Builder* builder, uint64_t* fixup) {
         0, 0
     };
     APPEND_BYTES(bytes)
-    *fixup = builder->byteStream_len - 1;
+    *fixup = builder->byteStream_len - 2;
 }
 void emit_jmp32(Builder* builder, uint64_t* fixup) {
     uint8_t bytes[] = {
@@ -384,7 +438,7 @@ void emit_jmp32(Builder* builder, uint64_t* fixup) {
         0, 0, 0, 0
     };
     APPEND_BYTES(bytes)
-    *fixup = builder->byteStream_len - 1;
+    *fixup = builder->byteStream_len - 4;
 }
 void emit_call8(Builder* builder, uint64_t* fixup) {
     uint8_t bytes[] = {
@@ -400,7 +454,7 @@ void emit_call16(Builder* builder, uint64_t* fixup) {
         0, 0
     };
     APPEND_BYTES(bytes)
-    *fixup = builder->byteStream_len - 1;
+    *fixup = builder->byteStream_len - 2;
 }
 void emit_call32(Builder* builder, uint64_t* fixup) {
     uint8_t bytes[] = {
@@ -408,9 +462,93 @@ void emit_call32(Builder* builder, uint64_t* fixup) {
         0, 0, 0, 0
     };
     APPEND_BYTES(bytes)
+    *fixup = builder->byteStream_len - 4;
+}
+
+
+void emit_jz8(Builder* builder, int reg0, uint64_t* fixup) {
+    uint8_t bytes[] = {
+        OPCODE_JZ,
+        (reg0 << 3) | 0,
+        0
+    };
+    APPEND_BYTES(bytes)
     *fixup = builder->byteStream_len - 1;
 }
-// void emit_jz(Builder* builder, int reg0, int32_t** relative);
-// void emit_jnz(Builder* builder, int reg0, int32_t** relative);
+void emit_jz16(Builder* builder, int reg0, uint64_t* fixup) {
+    uint8_t bytes[] = {
+        OPCODE_JZ,
+        (reg0 << 3) | 1,
+        0, 0
+    };
+    APPEND_BYTES(bytes)
+    *fixup = builder->byteStream_len - 2;
+}
+void emit_jz32(Builder* builder, int reg0, uint64_t* fixup) {
+    uint8_t bytes[] = {
+        OPCODE_JZ,
+        (reg0 << 3) | 2,
+        0, 0, 0, 0
+    };
+    APPEND_BYTES(bytes)
+    *fixup = builder->byteStream_len - 4;
+}
 
-// void emit_jcond(Builder* builder, ConditionKind kind, int reg0, int reg1, int32_t** relative);
+void emit_jnz8(Builder* builder, int reg0, uint64_t* fixup) {
+    uint8_t bytes[] = {
+        OPCODE_JNZ,
+        (reg0 << 3) | 0,
+        0
+    };
+    APPEND_BYTES(bytes)
+    *fixup = builder->byteStream_len - 1;
+}
+void emit_jnz16(Builder* builder, int reg0, uint64_t* fixup) {
+    uint8_t bytes[] = {
+        OPCODE_JNZ,
+        (reg0 << 3) | 1,
+        0, 0
+    };
+    APPEND_BYTES(bytes)
+    *fixup = builder->byteStream_len - 2;
+}
+void emit_jnz32(Builder* builder, int reg0, uint64_t* fixup) {
+    uint8_t bytes[] = {
+        OPCODE_JNZ,
+        (reg0 << 3) | 2,
+        0, 0, 0, 0
+    };
+    APPEND_BYTES(bytes)
+    *fixup = builder->byteStream_len - 4;
+}
+
+void emit_jcond8(Builder* builder, ConditionKind kind, int reg0, int reg1, uint64_t* fixup) {
+    int relsize = 0;
+    uint8_t bytes[] = {
+        OPCODE_JCOND,
+        relsize | (kind << 2) | ((reg0 << 6) & 3), (reg0 >> 2) | (reg1 << 3),
+        0,
+    };
+    APPEND_BYTES(bytes)
+    *fixup = builder->byteStream_len - 1;
+}
+void emit_jcond16(Builder* builder, ConditionKind kind, int reg0, int reg1, uint64_t* fixup) {
+    int relsize = 1;
+    uint8_t bytes[] = {
+        OPCODE_JCOND,
+        relsize | (kind << 2) | ((reg0 << 6) & 3), (reg0 >> 2) | (reg1 << 3),
+        0, 0
+    };
+    APPEND_BYTES(bytes)
+    *fixup = builder->byteStream_len - 2;
+}
+void emit_jcond32(Builder* builder, ConditionKind kind, int reg0, int reg1, uint64_t* fixup) {
+    int relsize = 2;
+    uint8_t bytes[] = {
+        OPCODE_JCOND,
+        relsize | (kind << 2) | ((reg0 << 6) & 3), (reg0 >> 2) | (reg1 << 3),
+        0, 0, 0, 0
+    };
+    APPEND_BYTES(bytes)
+    *fixup = builder->byteStream_len - 4;
+}

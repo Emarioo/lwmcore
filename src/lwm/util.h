@@ -33,6 +33,7 @@ bool create_folder(string path);
 // file or folder
 // bool remove_file(string path);
 
+void sleep_us(uint64_t microseconds);
 
 bool readFile(const char* path, void** buffer, size_t* size);
 bool writeFile(const char* path, void* buffer, size_t size);

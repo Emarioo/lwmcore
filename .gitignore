@@ -7,6 +7,8 @@
 *.a
 *.so
 
+*.log
+
 bin
 int
 sandbox
