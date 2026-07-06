@@ -58,7 +58,9 @@ bool emu_mmio_write(EmulatorContext* emulator, HardwareDevice* device, uintptr_t
         if (emulator->platformConfig->verbose) {
             printf("MMIO HALT\n");
         }
-        emulator->running = false;
+        for (int i=0;i<emulator->platformConfig->core_count;i++) {
+            emulator_reset_core(emulator, i);
+        }
         return true;
     }
     if (size == 1 && address == EMU_OUT) {

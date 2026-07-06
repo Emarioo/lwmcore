@@ -9,7 +9,11 @@
 #define PLATFORM_CORE_CONTROL_BOOT 0x1
 #define PLATFORM_CORE_CONTROL_RESET 0x2
 
-section .data 0x100
+
+section .boot 0x0
+    jmp main
+
+section .data 0x4
 
 init_msg:
     byte[] "core0\n\0"
@@ -17,11 +21,10 @@ init_msg:
 core_msg:
     byte[] "core1\n\0"
 
-section .text 0
-
+section .text 0x140
 
 main:
-    li sp, 0x100
+    li sp, 0x1000
 
     lea r0, [init_msg]
     call putstring

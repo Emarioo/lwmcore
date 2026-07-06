@@ -356,8 +356,7 @@ The first core to start may not be index 0. This is important in case the first 
 
 When booted paging and interrupts are disabled. Supervisor mode is active.
 
-All general purpose registers are in an undefined state (not necessarily zero).
-All control registers are in a defined state. Usually zero.
+All registers except CRSTATUS, CRTIMERCMP, and CRCPUID are in an undefined state.
 
 
 ## Core index
@@ -366,7 +365,7 @@ mfcr r1, CRCPUID
 ```
 
 ## Booting other cores
-Platform specifies through MMIO or memory structures how many cores exist and how
+Platform specifies through MMIO how many cores exist and how
 to start them. Below is an example.
  
 ```arm

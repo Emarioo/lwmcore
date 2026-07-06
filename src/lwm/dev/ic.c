@@ -83,8 +83,8 @@ void ic_queue_interrupt(EmulatorContext* emulator, HardwareDevice* device, int i
 void ic_tick(EmulatorContext* emulator, HardwareDevice* device) {
     IC_State* state = device->state;
 
-    bool* interruptLine = (bool*)&emulator->coreState.interruptLine;
-    int* vectorIndex    = (int*)&emulator->coreState.vectorIndex;
+    bool* interruptLine = (bool*)&emulator->cores[0].interruptLine;
+    int* vectorIndex    = (int*)&emulator->cores[0].vectorIndex;
 
     if (!state->inService) {
         *interruptLine = false;

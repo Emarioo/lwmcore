@@ -9,7 +9,7 @@
 bool dev_create_emu(EmulatorContext* emulator, HardwareDevice* device);
 bool dev_create_ic(EmulatorContext* emulator, HardwareDevice* device);
 bool dev_create_uart(EmulatorContext* emulator, HardwareDevice* device);
-
+bool platform_init(EmulatorContext* emulator, HardwareDevice* device);
 
 void print_help() {
     printf("Usage: lwm sample.s -o sample.bin\n");
@@ -195,8 +195,9 @@ int main(int argc, const char** argv) {
             dev_create_emu,
             dev_create_ic,
             dev_create_uart,
+            platform_init,
         };
-
+        
         config.devices_len = ARRAY_LENGTH(deviceConstructors);
         config.devices = malloc(sizeof(HardwareDevice*) * config.devices_len);
         memset(config.devices, 0, sizeof(HardwareDevice*) * config.devices_len);
@@ -206,6 +207,9 @@ int main(int argc, const char** argv) {
             config.devices[i] = device;
             device->init = deviceConstructors[i];
         }
+        
+        config.core_count = 2;
+        config.core_mode = MODE_16;
         emulator_start(&config);
     }
 

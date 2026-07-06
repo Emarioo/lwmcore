@@ -62,6 +62,10 @@ typedef struct {
 
     uint64_t tickCounter;
 
+    bool running;
+    jmp_buf loop_jmpbuf;
+
+    EmulatorContext* emulator;
 } CoreState;
 
 typedef struct HardwareDevice HardwareDevice;
@@ -87,6 +91,9 @@ typedef struct {
     void*    rom;
     int      rom_len;
 
+    int      core_count;
+    CoreMode core_mode;
+
     bool quiet;
     bool verbose;
 
@@ -95,20 +102,22 @@ typedef struct {
 } PlatformConfig;
 
 struct EmulatorContext {
-    CoreState coreState;
     PlatformConfig* platformConfig;
-    
+
     uint8_t* physicalMemory;
     uint64_t physicalMemory_size;
 
-    bool running;
+    CoreState* cores;
 
-    jmp_buf loop_jmpbuf;
-
+    // bool running;
+    // jmp_buf loop_jmpbuf;
 };
 
 
 void emulator_request_interrupt(EmulatorContext* emulator, int irq_number);
+
+void emulator_boot_core(EmulatorContext* emulator, int cpuid, uintptr_t entry);
+void emulator_reset_core(EmulatorContext* emulator, int cpuid);
 
 void emulator_start(PlatformConfig* config);
 
