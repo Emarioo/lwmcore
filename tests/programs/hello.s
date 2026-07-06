@@ -1,5 +1,5 @@
 
-#define UART 0x2000
+#define UART 0xF004
 
 section .data 0x20
 
@@ -17,7 +17,7 @@ beg:
     add r1, r1, r0
     jmp beg
 end:
-    wfi
+    hlt
 
 putchar:
     stb r0, [#UART] 

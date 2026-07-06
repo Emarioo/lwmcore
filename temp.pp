@@ -1,8 +1,5 @@
 
 
-#define UART_BASE 0xF004
-#define LOG_BASE 0xF008
-
 section .data 0x80
 
 ex_msg:
@@ -27,9 +24,9 @@ main:
     hlt
 
 putchar:
-    stb r0, [#UART_BASE] 
+    stb r0, [0xF004] 
 
-    stb r0, [r12 + #LOG_BASE] 
+    stb r0, [r12 + 0xF008] 
     li r0, 1
     add r12, r12, r0
     ret

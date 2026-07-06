@@ -72,7 +72,7 @@ int largest_encoding_ext(int opcode, AddressingForm form, int* lowestBytes) {
         case OPCODE_CALL:
         case OPCODE_CALL1:
         case OPCODE_CALL2:
-            *lowestBytes = 2;
+            if (lowestBytes) *lowestBytes = 2;
             return 5;
         case OPCODE_RET:
         case OPCODE_SYSCALL:
@@ -111,7 +111,7 @@ int largest_encoding_ext(int opcode, AddressingForm form, int* lowestBytes) {
                 case ADDRESSING_REG1_DISP16:    
                 case ADDRESSING_REG1_PC_DISP16: return 5;
                 case ADDRESSING_REG1_DISP32:    
-                case ADDRESSING_REG1_PC_DISP32: *lowestBytes = 4; return 7;
+                case ADDRESSING_REG1_PC_DISP32: if (lowestBytes) *lowestBytes = 4; return 7;
                 case ADDRESSING_REG1_DISP64:    return 11;
                 case ADDRESSING_REG2_DISP8:     return 5;
                 case ADDRESSING_REG2_DISP16:    return 6;
@@ -119,7 +119,7 @@ int largest_encoding_ext(int opcode, AddressingForm form, int* lowestBytes) {
                 case ADDRESSING_REG2_DISP64:    return 12;
                 case ADDRESSING_PC_DISP8:       return 3;
                 case ADDRESSING_PC_DISP16:      return 4;
-                case ADDRESSING_PC_DISP32:      *lowestBytes = 3; return 6;
+                case ADDRESSING_PC_DISP32:      if (lowestBytes) *lowestBytes = 3; return 6;
             }
         case OPCODE_RDTICK: return 2;
         case OPCODE_RDTICK1: return 3;

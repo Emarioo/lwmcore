@@ -39,7 +39,7 @@ void hard_fault(EmulatorContext* emulator) {
 }
 
 void emulator_trigger_exception(EmulatorContext* emulator, int vector);
-void emulator_queue_interrupt(EmulatorContext* emulator, int vector);
+void emulator_enter_vector(EmulatorContext* emulator, int vector);
 
 void check_registers(EmulatorContext* emulator, uint8_t* regs, int count) {
     uint64_t pc = emulator->coreState.pc;
@@ -89,7 +89,7 @@ bool write_address(EmulatorContext* emulator, uint64_t address, uint64_t size, v
     for (int i=0;i<emulator->platformConfig->devices_len;i++) {
         HardwareDevice* dev = emulator->platformConfig->devices[i];
         if (dev->mmio_write) {
-            bool res = dev->mmio_write(emulator, address, size, data);
+            bool res = dev->mmio_write(emulator, dev, address, size, data);
             if (res) {
                 return true;
             }
@@ -132,7 +132,8 @@ bool read_address(EmulatorContext* emulator, uint64_t address, uint64_t size, vo
     for (int i=0;i<emulator->platformConfig->devices_len;i++) {
         HardwareDevice* dev = emulator->platformConfig->devices[i];
         if (dev->mmio_read) {
-            bool res = dev->mmio_read(emulator, address, size, data);
+            // printf("DEVR 0x%zx\n", address);
+            bool res = dev->mmio_read(emulator, dev, address, size, data);
             if (res) {
                 return true;
             }
@@ -513,39 +514,6 @@ void emulator_dump_state(EmulatorContext* emulator) {
 }
 
 
-static FILE* log_file;
-
-bool uart_mmio_write(EmulatorContext* emulator, uintptr_t address, size_t size, void* data) {
-    // printf("MMIO 0x%zx %zd %c\n", address, size, *(char*)data);
-    if (size == 1 && address == 0x2000) {
-        printf("%c", *(char*)data);
-        fflush(stdout);
-        return true;
-    }
-    if (address == 0xFFF0) {
-        // Memory mapped IO for halting the emulator.
-        if (emulator->platformConfig->verbose) {
-            printf("MMIO HALT\n");
-        }
-        emulator->running = false;
-        return true;
-    }
-    if (size == 1 && address >= 0x3000 && address < 0x4000) {
-        if (!log_file) {
-            log_file = fopen("emu.log", "w");
-        }
-        fwrite(data, 1, 1, log_file);
-        fflush(log_file);
-        return true;
-    }
-    return false;
-}
-
-static HardwareDevice uart_device = {
-    .mmio_write = uart_mmio_write   
-};
-
-
 void emulator_trigger_exception(EmulatorContext* emulator, int vector) {
     if (emulator->coreState.insideFault) {
         if (emulator->coreState.insideDoubleFault) {
@@ -556,11 +524,11 @@ void emulator_trigger_exception(EmulatorContext* emulator, int vector) {
     } else {
         emulator->coreState.insideFault = true;
     }
-    emulator_queue_interrupt(emulator, vector);
+    emulator_enter_vector(emulator, vector);
     longjmp(emulator->loop_jmpbuf, 1);
 }
 
-void emulator_queue_interrupt(EmulatorContext* emulator, int vector) {
+void emulator_enter_vector(EmulatorContext* emulator, int vector) {
     CoreState* core = &emulator->coreState;
 
     uint64_t ex_handler = 0;
@@ -581,6 +549,17 @@ void emulator_queue_interrupt(EmulatorContext* emulator, int vector) {
     core->crstatus &= ~(CRSTATUS_USER|CRSTATUS_INTERRUPT);
 }
 
+
+void emulator_request_interrupt(EmulatorContext* emulator, int irq_number) {
+    for (int i=0;i<emulator->platformConfig->devices_len;i++) {
+        HardwareDevice* device = emulator->platformConfig->devices[i];
+        if (device->queue_interrupt) {
+            device->queue_interrupt(emulator, device, irq_number);
+            break;
+        }
+    }
+}
+
 void emulator_start(PlatformConfig* config) {
 
     EmulatorContext _ctx = {0};
@@ -597,10 +576,9 @@ void emulator_start(PlatformConfig* config) {
     emulator->coreState.mode = MODE_16;
     emulator->coreState.pc = emulator->platformConfig->core_entry;
 
-    if (emulator->platformConfig->devices_len == 0) {
-        emulator->platformConfig->devices = malloc(sizeof(HardwareDevice));
-        emulator->platformConfig->devices[0] = &uart_device;
-        emulator->platformConfig->devices_len = 1;
+    for (int i=0;i<config->devices_len;i++) {
+        HardwareDevice* device = config->devices[i];
+        device->init(emulator, device);
     }
 
     CoreState* core = &emulator->coreState;
@@ -617,11 +595,26 @@ void emulator_start(PlatformConfig* config) {
 
         core->tickCounter++;
 
-        if (core->tickCounter == core->crtimercmp) {
-            printf("TIMER INTERRUPT at 0x%zx tc=%zu\n", core->pc, core->tickCounter);
-            emulator_queue_interrupt(emulator, VECTOR_TIMER_INTERRUPT);
+
+        for (int i=0;i<config->devices_len;i++) {
+            HardwareDevice* device = config->devices[i];
+            if (device->tick) {
+                device->tick(emulator, device);
+            }
         }
 
+        bool canHandleInterrupt = !core->insideFault && !core->insideDoubleFault && (core->crstatus & CRSTATUS_INTERRUPT);
+
+        if (canHandleInterrupt) {
+            if (core->tickCounter == core->crtimercmp) {
+                printf("TIMER INTERRUPT at 0x%zx tc=%zu\n", core->pc, core->tickCounter);
+                emulator_enter_vector(emulator, VECTOR_TIMER_INTERRUPT);
+
+            } else if (core->interruptLine) {
+                printf("INTERRUPT at 0x%zx vector=%d\n", core->pc, core->vectorIndex);
+                emulator_enter_vector(emulator, core->vectorIndex);
+            }
+        }
 
         int jmpResult = setjmp(emulator->loop_jmpbuf);
 
@@ -1200,7 +1193,7 @@ void dump(PlatformConfig* config) {
             printf("\n");
         }
     }
-    if ((i+1) % stride != 0) {
+    if ((i) % stride != 0) {
         printf("\n");
     }
 }

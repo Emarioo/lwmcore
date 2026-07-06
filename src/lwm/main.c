@@ -4,6 +4,13 @@
 #include "lwm/blotter.h"
 #include "lwm/scheme_gen.h"
 
+
+// @TODO Move these elsewhere!
+bool dev_create_emu(EmulatorContext* emulator, HardwareDevice* device);
+bool dev_create_ic(EmulatorContext* emulator, HardwareDevice* device);
+bool dev_create_uart(EmulatorContext* emulator, HardwareDevice* device);
+
+
 void print_help() {
     printf("Usage: lwm sample.s -o sample.bin\n");
     printf("  -o <path>       : Path where to place output binary file.\n");
@@ -154,6 +161,9 @@ int main(int argc, const char** argv) {
             options.outputPath = "temp.bin";
         }
         AssemblerError result = assemble(buffer.ptr, buffer.len, &options);
+        if (result != LWM_ASM_ERROR_NONE) {
+            return 1;
+        }
 
         config.rom = options.rom;
         config.rom_len = options.rom_len;
@@ -180,6 +190,22 @@ int main(int argc, const char** argv) {
     }
 
     if (do_emulate) {
+        
+        FN_init deviceConstructors[] = {
+            dev_create_emu,
+            dev_create_ic,
+            dev_create_uart,
+        };
+
+        config.devices_len = ARRAY_LENGTH(deviceConstructors);
+        config.devices = malloc(sizeof(HardwareDevice*) * config.devices_len);
+        memset(config.devices, 0, sizeof(HardwareDevice*) * config.devices_len);
+
+        for (int i=0;i<config.devices_len;i++) {
+            HardwareDevice* device = calloc(1, sizeof(HardwareDevice));
+            config.devices[i] = device;
+            device->init = deviceConstructors[i];
+        }
         emulator_start(&config);
     }
 

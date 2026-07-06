@@ -381,6 +381,7 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                 ERROR_SRC_RET(head, "Expected an integer, not '%c'\n", get_char(context, head));
             }
 
+            section->name = sectionName;
             section->label_len = 0;
             section->objects_len = 0;
             section->labels = malloc(sizeof(Label) * 100);
@@ -608,7 +609,7 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
             inst.opcode = OPCODE_STB;
             inst.sub_opcode = MEMOP_STB;
             inst.operands[1].form = ADDRESSING_ABS16;
-            inst.operands[1].immediate = 0xFFF0;
+            inst.operands[1].immediate = 0xF000;
         }
         else CASE_OPCODE("li", OPCODE_LI8)
         else CASE_OPCODE("call", OPCODE_CALL)
@@ -642,6 +643,7 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
         else CASE_OPCODE("or", OPCODE_OR) 
         else CASE_OPCODE("xor", OPCODE_XOR) 
         else CASE_OPCODE("shl", OPCODE_SHL) 
+        else CASE_OPCODE("shr", OPCODE_SHR) 
         else CASE_OPCODE("ret", OPCODE_RET) 
         else CASE_OPCODE("syscall", OPCODE_SYSCALL) 
         else CASE_OPCODE("vret", OPCODE_VRET) 
@@ -706,9 +708,9 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
     }
     for(int j=0;j<section_len;j++) {
         bool changed = false;
-        for(int i=0;i<section_len - j - 1;i++) {
-            Section* a = &context->sections[i];
-            Section* b = &context->sections[i+1];
+        for(int i=0;i<section_len-1;i++) {
+            Section* a = &context->sections[sorted_section_indices[i]];
+            Section* b = &context->sections[sorted_section_indices[i+1]];
             if(a->addr > b->addr) {
                 changed = true;
                 int tmp = sorted_section_indices[i+1];
@@ -730,22 +732,12 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
             // label->final_address += section->addr;
         }
     }
-
-    // Check section overlaps
-    // bool has_overlap = false;
-    // for(int i=0;i<section_len-1;i++) {
+    
+    // printf("Estimated sections:\n");
+    // for(int i=0;i<section_len;i++) {
     //     Section* a = &context->sections[sorted_section_indices[i]];
-    //     Section* b = &context->sections[sorted_section_indices[i+1]];
-
-    //     if(a->addr + a->size > b->addr) {
-    //         error("Section overlap!\n");
-    //         printf("  %s:%d - [0x%zx - 0x%zx]\n", a->location.file, a->location.line, a->addr, a->addr + a->size);
-    //         printf("  %s:%d - [0x%zx - 0x%zx]\n", b->location.file, b->location.line, b->addr, b->addr + b->size);
-    //         has_overlap = true;
-    //     }
+    //     printf(" %s [0x%zx - 0x%zx] %d\n", a->name.ptr, a->addr, a->size, sorted_section_indices[i]);
     // }
-    // if(has_overlap)
-    //     return false;
 
     uint8_t* rom_ptr;
     uint64_t rom_max;
@@ -962,6 +954,8 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                 } break;
                 case OPCODE_SHL: {         EMIT_REG3(shl);
                 } break;
+                case OPCODE_SHR: {         EMIT_REG3(shl);
+                } break;
                 case OPCODE_RET: {         emit_ret(builder);
                 } break;
                 case OPCODE_SYSCALL: { emit_syscall(builder);
@@ -1036,10 +1030,35 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                 } break;
             }
         }
+        
+        section->size = builder->byteStream_len - section->addr;
+
         size_t rom_stream_offset = builder->byteStream - rom_ptr;
         size_t rom_stream_length = builder->byteStream_len;
         if (rom_stream_offset + rom_stream_length > rom_len)
             rom_len = rom_stream_offset + rom_stream_length;
+    }
+
+    if (options->verbose) {
+        printf("Estimated sections:\n");
+    }
+    for(int i=0;i<section_len;i++) {
+        Section* a = &context->sections[sorted_section_indices[i]];
+        if (options->verbose) {
+            printf(" %s [0x%zx - 0x%zx] %d\n", a->name.ptr, a->addr, a->size, sorted_section_indices[i]);
+        }
+
+        if(i+1 >= section_len)
+            break;
+
+        // Check section overlaps
+        Section* b = &context->sections[sorted_section_indices[i+1]];
+        if(a->addr + a->size > b->addr) {
+            error("Section overlap!\n");
+            printf("  %s:%d - %s [0x%zx - 0x%zx]\n", a->location.file, a->location.line, a->name.ptr, a->addr, a->addr + a->size);
+            printf("  %s:%d - %s [0x%zx - 0x%zx]\n", b->location.file, b->location.line, b->name.ptr, b->addr, b->addr + b->size);
+            longjmp(context->jumpBuffer, 1);
+        }
     }
 
     for (int li=0;li<context->labelFixups_len;li++) {
@@ -1048,7 +1067,8 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
         int64_t relative = fixup->label->final_address - (fixup->rom_offset + fixup->reloc_size);
         if (fixup->reloc_size == 1) {
             if (abs(relative) >= 0x80) {
-                fprintf(stderr, "ERROR: Label fixup too big for rel%d (value %zd)\n", fixup->reloc_size*8, relative);
+                error("Label fixup too big for rel%d (value %zd)\n", fixup->reloc_size*8, relative);
+                longjmp(context->jumpBuffer, 1);
             }
             if (options->verbose) {
                 printf("Fixup%d *0x%zx = 0x%zx (final 0x%zx)\n",fixup->reloc_size*8, fixup->rom_offset, relative, relative + fixup->rom_offset + fixup->reloc_size);
@@ -1056,7 +1076,8 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
             *(int8_t*)(rom_ptr + fixup->rom_offset) += relative;
         } else if (fixup->reloc_size == 2) {
             if (abs(relative) >= 0x8000) {
-                fprintf(stderr, "ERROR: Label fixup too big for rel%d (value %zd)\n", fixup->reloc_size*8, relative);
+                error("Label fixup too big for rel%d (value %zd)\n", fixup->reloc_size*8, relative);
+                longjmp(context->jumpBuffer, 1);
             }
             if (options->verbose) {
                 printf("Fixup%d *0x%zx = 0x%zx (final 0x%zx)\n", fixup->reloc_size*8, fixup->rom_offset, relative, relative + fixup->rom_offset + fixup->reloc_size);

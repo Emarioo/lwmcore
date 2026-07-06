@@ -1,5 +1,5 @@
 
-#define UART 0x2000
+#define UART 0xFFF4
 
 section .data 0x20
 

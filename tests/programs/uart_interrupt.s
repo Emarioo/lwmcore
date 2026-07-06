@@ -1,6 +1,4 @@
-/*
-    This program requires UART and emulator device.
-*/
+
 
 #define UART_BASE 0xF004
 #define LOG_BASE 0xF008

@@ -83,13 +83,13 @@ Core state:
 # TODO
 
 - [x] Assembler only handles labels for call. Do same for jump and conditional jumps.
+- [x] Read tick and timer.
+- [x] Exception vector and illegal operations jumping to it.
+- [X] Interface for firmware and hardware devices. Disk device?
 - [ ] Operand checks in assembler. Using immediate where only register is allowed for example.
 - [ ] Make a test suite with some basic programs. Prime numbers, bubble sort, extensive instruction testing. Testing should be done for 16/32/64 don't forget that!
-- [ ] Read tick and timer.
-- [ ] Exception vector and illegal operations jumping to it.
 - [ ] Page tables.
-- [ ] Interrupts.
-- [ ] Interface for firmware and hardware devices. Disk device?
+- [ ] Interrupts. Needs redesign to handle multiple cores.
 - [ ] User mode, syscall.
 - [ ] Multiple cores.
 - [ ] Implement decoder in logic world.

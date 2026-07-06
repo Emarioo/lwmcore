@@ -30,13 +30,13 @@ typedef enum {
 
 #define CRSTATUS_USER        ((size_t)0x2)
 #define CRSTATUS_PAGING      ((size_t)0x4)
-#define CRSTATUS_INTERRUPT   ((size_t)0x16)
+#define CRSTATUS_INTERRUPT   ((size_t)0x10)
 
 #define CRCAUSE_PRESENT      ((size_t)0x1)
 #define CRCAUSE_USER         ((size_t)0x2)
 #define CRCAUSE_WRITE        ((size_t)0x4)
 #define CRCAUSE_EXECUTE      ((size_t)0x8)
-#define CRCAUSE_INTERRUPT    ((size_t)0x16)
+#define CRCAUSE_INTERRUPT    ((size_t)0x10)
 
 #define PAGE_BIT_PRESENT     ((size_t)0x1)
 #define PAGE_BIT_USER        ((size_t)0x2)

@@ -55,7 +55,7 @@ typedef struct {
 typedef struct {
     string   name;
     uint64_t addr;
-    int      size;
+    uint64_t size;
     Location location;
     
     int     objects_len;

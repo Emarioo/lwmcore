@@ -426,7 +426,7 @@ typedef struct {
 } MacroParameter;
 
 typedef struct {
-    char name[32];
+    char name[64];
     int            parameters_len;
     MacroParameter parameters[5];
 
@@ -440,7 +440,7 @@ typedef struct {
 
 bool preprocess_text(const string in_text, string* out_text) {
 
-    MacroDef macros[16];
+    MacroDef* macros = calloc(100, sizeof(MacroDef));
     int macros_len = 0;
 
 
@@ -551,6 +551,7 @@ bool preprocess_text(const string in_text, string* out_text) {
             int body_start = head;
             int body_end = head;
             bool hadNonSpace = false;
+            bool reachedNewLine = false;
 
             while (true) {
 
@@ -562,7 +563,7 @@ bool preprocess_text(const string in_text, string* out_text) {
                 if (chr != '#') {
                     head++;
                     if (chr == '\n') {
-                        if (hadNonSpace) {
+                        if (hadNonSpace && !reachedNewLine) {
                             // endmacro is not expected in this cases:
                             //   #define MACRO()  sometext
                             // But it is expected here:
@@ -571,6 +572,7 @@ bool preprocess_text(const string in_text, string* out_text) {
                             //   #endmacro
                             break;
                         }
+                        reachedNewLine = true;
                     }
                     if (!is_space(chr)) {
                         hadNonSpace = true;
@@ -599,6 +601,32 @@ bool preprocess_text(const string in_text, string* out_text) {
             macro->body = malloc(macro->body_len+1);
             memcpy(macro->body, text + body_start, macro->body_len);
             macro->body[macro->body_len] = 0;
+            continue;
+        } else if (equal(macroName, "repeat")) {
+            
+            parse_space(context, &head);
+
+            uint64_t count;
+            parsedChars = parse_int(context, &head, &count);
+            if (!parsedChars) {
+                ERROR_SRC_RET(head, "Expected integer.\n");
+            }
+            
+            parse_space(context, &head);
+
+            string content;
+            parsedChars = parse_string(context, &head, &content);
+            if (!parsedChars) {
+                ERROR_SRC_RET(head, "Expected string.\n");
+            }
+            
+            for (int ri=0;ri<count;ri++) {
+                for (int bi=0;bi<content.len;bi++) {
+                    outputBuffer[outputBuffer_len] = content.ptr[bi];
+                    outputBuffer_len++;
+                }
+            }
+
             continue;
         }
 

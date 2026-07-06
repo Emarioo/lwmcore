@@ -55,19 +55,32 @@ typedef struct {
     // bool insideInterrupt;
     bool insideFault;
     bool insideDoubleFault;
+    
+    // Only interrupt controller can modify these
+    const bool interruptLine;
+    const int  vectorIndex;
 
     uint64_t tickCounter;
 
 } CoreState;
 
+typedef struct HardwareDevice HardwareDevice;
 
-typedef bool(*FN_mmio_read )(EmulatorContext* emulator, uintptr_t address, size_t size, void* data);
-typedef bool(*FN_mmio_write)(EmulatorContext* emulator, uintptr_t address, size_t size, void* data);
+typedef bool(*FN_mmio_read)      (EmulatorContext* emulator, HardwareDevice* device, uintptr_t address, size_t size, void* data);
+typedef bool(*FN_mmio_write)     (EmulatorContext* emulator, HardwareDevice* device, uintptr_t address, size_t size, void* data);
+typedef void(*FN_tick)           (EmulatorContext* emulator, HardwareDevice* device);
+typedef bool(*FN_init)           (EmulatorContext* emulator, HardwareDevice* device);
+typedef void(*FN_queue_interrupt)(EmulatorContext* emulator, HardwareDevice* device, int irq_number);
 
-typedef struct {
-    FN_mmio_read  mmio_read;
-    FN_mmio_write mmio_write;
-} HardwareDevice;
+struct HardwareDevice {
+    void*              state;
+    void*              user_data;
+    FN_init            init;
+    FN_tick            tick;
+    FN_mmio_read       mmio_read;
+    FN_mmio_write      mmio_write;
+    FN_queue_interrupt queue_interrupt;
+};
 
 typedef struct {
     uint64_t core_entry;
@@ -95,7 +108,7 @@ struct EmulatorContext {
 };
 
 
-
+void emulator_request_interrupt(EmulatorContext* emulator, int irq_number);
 
 void emulator_start(PlatformConfig* config);
 

@@ -20,6 +20,8 @@ typedef int64_t i64;
 
 #define nullptr ((void*)0)
 
+#define ARRAY_LENGTH(ARR) (sizeof(ARR)/sizeof(*ARR))
+
 typedef struct {
     int len;
     char* ptr;
