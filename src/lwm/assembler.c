@@ -11,15 +11,26 @@
 
 
 typedef struct {
+    Label*   label;
+    uint64_t rom_offset;
+    uint8_t  reloc_size;
+} LabelFixup;
+
+    
+typedef struct {
     string source_file;
     int error_code;
 
     char* text;
     int   text_len;
 
+    int         labelFixups_len;
+    LabelFixup* labelFixups;
     
     int      sections_len;
     Section* sections;
+
+    Builder* builder;
 
     ParserContext parserContext;
 
@@ -67,6 +78,31 @@ bool find_label(AssemblerContext* context, const char* name, Section** out_secti
     return false;
 }
 
+LabelFixup* create_fixup(AssemblerContext* context, Instruction* inst, Operand* labelOperand) {
+    LabelFixup* fixup = &context->labelFixups[context->labelFixups_len];
+    context->labelFixups_len++;
+
+    Section* foundSection;
+    Label* foundLabel;
+    bool found = find_label(context, labelOperand->label.ptr, &foundSection, &foundLabel);
+    if (!found) {
+        ERROR_SRC_RET(inst->parseHead, "Label %s does not exist.\n", labelOperand->label.ptr);
+    }
+
+    uint64_t pc = builder_head(context->builder);
+    int64_t relativeLow = foundLabel->estimated_addressLow - pc + labelOperand->immediate;
+    int64_t relativeHigh = foundLabel->estimated_addressHigh - pc + labelOperand->immediate;
+
+    if (abs(relativeLow) < 0x80 && abs(relativeHigh) < 0x80) {
+        fixup->reloc_size = 1;
+    } else if (abs(relativeLow) < 0x8000 && abs(relativeHigh) < 0x8000) {
+        fixup->reloc_size = 2;
+    } else {
+        fixup->reloc_size = 4;
+    }
+    fixup->label = foundLabel;
+    return fixup;
+}
 
 AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOptions* options) {
 
@@ -122,7 +158,8 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
     }
 
     int head = 0;
-    uint64_t estimated_address = 0; // relative to block
+    uint64_t estimated_addressLow = 0; // relative to block
+    uint64_t estimated_addressHigh = 0; // relative to block
 
     uint8_t queuedAlignment = 0;
 
@@ -314,7 +351,8 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                 object->dataobj.size = data_bytes;
             }
 
-            estimated_address += data_bytes * array_length;
+            estimated_addressLow += data_bytes * array_length;
+            estimated_addressHigh += data_bytes * array_length;
             continue;
         }
 
@@ -327,7 +365,7 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
 
             parse_space(context, &head);
 
-            context->sections[context->sections_len-1].size = estimated_address;
+            context->sections[context->sections_len-1].size = estimated_addressHigh;
 
             // Create new block and set its address
             Location loc = count_lines(context, head);
@@ -350,7 +388,8 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
             memset(section->labels, 0, sizeof(Label) * 100);
             memset(section->objects, 0, sizeof(Object) * 100);
 
-            estimated_address = 0;
+            estimated_addressLow = 0;
+            estimated_addressHigh = 0;
 
             continue;
         }
@@ -387,7 +426,8 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
             Label* label = &currentSection->labels[currentSection->label_len];
             currentSection->label_len++;
 
-            label->estimated_address = estimated_address;
+            label->estimated_addressLow = estimated_addressLow;
+            label->estimated_addressHigh = estimated_addressHigh;
             label->name = name;
             label->object_id = currentSection->objects_len; // Refer to next object
             continue;
@@ -564,6 +604,12 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
             inst.operands[2].regnum = inst.operands[1].regnum;
             inst.operands[1].regnum = inst.operands[1].regnum;
         }
+        else if (equal(name, "hlt")) {
+            inst.opcode = OPCODE_STB;
+            inst.sub_opcode = MEMOP_STB;
+            inst.operands[1].form = ADDRESSING_ABS16;
+            inst.operands[1].immediate = 0xFFF0;
+        }
         else CASE_OPCODE("li", OPCODE_LI8)
         else CASE_OPCODE("call", OPCODE_CALL)
         else CASE_OPCODE("jmp", OPCODE_JMP)
@@ -582,6 +628,7 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
         else CASE_OPCODE("not", OPCODE_NOT)
         else CASE_OPCODE("mfcr", OPCODE_MFCR) 
         else CASE_OPCODE("mtcr", OPCODE_MTCR) 
+        else CASE_OPCODE("mscr", OPCODE_MSCR) 
         else CASE_OPCODE("cpufeat", OPCODE_CPUFEAT)
         else CASE_OPCODE("add", OPCODE_ADD) 
         else CASE_OPCODE("sub", OPCODE_SUB) 
@@ -635,12 +682,16 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
         object->inst = inst;
         // @TODO ERROR_SRC_RET(location_head, "Max instruction per block reached! (%d)\n", MAX_INST_PER_BLOCK);
         
-        int instBytes = largest_encoding(inst.opcode, inst.operands[1].form);
+        int lowestBytes = 0;
+        int instBytes = largest_encoding_ext(inst.opcode, inst.operands[1].form, &lowestBytes);
+        if (lowestBytes == 0)
+            lowestBytes = instBytes;
 
-        estimated_address += instBytes;
+        estimated_addressLow += lowestBytes;
+        estimated_addressHigh += instBytes;
     }
     
-    context->sections[context->sections_len-1].size = estimated_address;
+    context->sections[context->sections_len-1].size = estimated_addressHigh;
     
     
     //###########################
@@ -674,7 +725,8 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
         Section* section = &context->sections[i];
         for(int j=0;j<section->label_len;j++) {
             Label* label = &section->labels[j];
-            label->estimated_address += section->addr;
+            label->estimated_addressLow += section->addr;
+            label->estimated_addressHigh += section->addr;
             // label->final_address += section->addr;
         }
     }
@@ -706,17 +758,12 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
     rom_len = 0;
     memset(rom_ptr, 0, rom_max);
 
-    typedef struct {
-        Label*   label;
-        uint64_t rom_offset;
-        uint8_t  reloc_size;
-    } LabelFixup;
-
-    int         labelFixups_len = 0;
-    LabelFixup* labelFixups = malloc(sizeof(LabelFixup) * 1000);
+    context->labelFixups_len = 0;
+    context->labelFixups = malloc(sizeof(LabelFixup) * 1000);
 
     Builder  _builder = {0};
     Builder* builder = &_builder;
+    context->builder = builder;
 
     for(int bi=0;bi<section_len;bi++) {
         Section* section = &context->sections[sorted_section_indices[bi]];
@@ -757,7 +804,9 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                 }
                 label->final_address = builder_head(builder);
                 checkLabelIndex++;
-                // printf("Update label %s 0x%x obj=%d secaddr=0x%zx\n", label->name.ptr, label->final_address, label->object_id, section->addr);
+                if (options->verbose) {
+                    printf("Update label %s 0x%x obj=%d secaddr=0x%zx\n", label->name.ptr, label->final_address, label->object_id, section->addr);
+                }
             }
 
             if (object->kind == OBJECT_DATA) {
@@ -808,162 +857,75 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                 } break;
                 case OPCODE_CALL: {
                     Operand* labelOperand = &inst->operands[0];
-                    if (labelOperand->label.len) {
-                        LabelFixup* fixup = &labelFixups[labelFixups_len];
-                        labelFixups_len++;
-
-                        Section* foundSection;
-                        Label* foundLabel;
-                        bool found = find_label(context, labelOperand->label.ptr, &foundSection, &foundLabel);
-                        if (found) {
-                            uint64_t pc = builder_head(builder);
-                            int64_t relative = foundLabel->estimated_address - pc;
-
-                            if (abs(relative) < 0x80) {
-                                emit_call8(builder, &fixup->rom_offset);
-                                fixup->reloc_size = 1;
-                            } else if (abs(relative) < 0x8000) {
-                                emit_call16(builder, &fixup->rom_offset);
-                                fixup->reloc_size = 2;
-                            } else {
-                                emit_call32(builder, &fixup->rom_offset);
-                                fixup->reloc_size = 4;
-                            }
-                            fixup->label = foundLabel;
-                        } else {
-                            ERROR_SRC_RET(inst->parseHead, "Label %s does not exist.\n", labelOperand->label.ptr);
-                        }
+                    if (!labelOperand->label.len) {
+                        ERROR_SRC_RET(inst->parseHead, "Immediate or register is not allowed.\n");
+                    }
+                    LabelFixup* fixup = create_fixup(context, inst, labelOperand);
+                    if (fixup->reloc_size == 1) {
+                        emit_call8(builder, &fixup->rom_offset);
+                    } else if (fixup->reloc_size == 2) {
+                        emit_call16(builder, &fixup->rom_offset);
                     } else {
-                        // Immediate
-                        Assert(false);
+                        emit_call32(builder, &fixup->rom_offset);
                     }
                 } break;
                 case OPCODE_JMP: {
                     Operand* labelOperand = &inst->operands[0];
-                    if (labelOperand->label.len) {
-                        LabelFixup* fixup = &labelFixups[labelFixups_len];
-                        labelFixups_len++;
-
-                        Section* foundSection;
-                        Label* foundLabel;
-                        bool found = find_label(context, labelOperand->label.ptr, &foundSection, &foundLabel);
-                        if (found) {
-                            uint64_t pc = builder_head(builder);
-                            int64_t relative = foundLabel->estimated_address - pc;
-
-                            if (abs(relative) < 0x80) {
-                                emit_jmp8(builder, &fixup->rom_offset);
-                                fixup->reloc_size = 1;
-                            } else if (abs(relative) < 0x8000) {
-                                emit_jmp16(builder, &fixup->rom_offset);
-                                fixup->reloc_size = 2;
-                            } else {
-                                emit_jmp32(builder, &fixup->rom_offset);
-                                fixup->reloc_size = 4;
-                            }
-                            fixup->label = foundLabel;
-                        } else {
-                            ERROR_SRC_RET(inst->parseHead, "Label %s does not exist.\n", labelOperand->label.ptr);
-                        }
+                    if (!labelOperand->label.len) {
+                        ERROR_SRC_RET(inst->parseHead, "Immediate or register is not allowed.\n");
+                    }
+                    LabelFixup* fixup = create_fixup(context, inst, labelOperand);
+                    if (fixup->reloc_size == 1) {
+                        emit_jmp8(builder, &fixup->rom_offset);
+                    } else if (fixup->reloc_size == 2) {
+                        emit_jmp16(builder, &fixup->rom_offset);
                     } else {
-                        // Immediate
-                        Assert(false);
+                        emit_jmp32(builder, &fixup->rom_offset);
                     }
                 } break;
                 case OPCODE_JZ: {
                     Operand* labelOperand = &inst->operands[1];
-                    if (labelOperand->label.len) {
-                        LabelFixup* fixup = &labelFixups[labelFixups_len];
-                        labelFixups_len++;
-
-                        Section* foundSection;
-                        Label* foundLabel;
-                        bool found = find_label(context, labelOperand->label.ptr, &foundSection, &foundLabel);
-                        if (found) {
-                            uint64_t pc = builder_head(builder);
-                            int64_t relative = foundLabel->estimated_address - pc;
-
-                            if (abs(relative) < 0x80) {
-                                emit_jz8(builder, inst->operands[0].regnum, &fixup->rom_offset);
-                                fixup->reloc_size = 1;
-                            } else if (abs(relative) < 0x8000) {
-                                emit_jz16(builder, inst->operands[0].regnum, &fixup->rom_offset);
-                                fixup->reloc_size = 2;
-                            } else {
-                                emit_jz32(builder, inst->operands[0].regnum, &fixup->rom_offset);
-                                fixup->reloc_size = 4;
-                            }
-                            fixup->label = foundLabel;
-                        } else {
-                            ERROR_SRC_RET(inst->parseHead, "Label %s does not exist.\n", labelOperand->label.ptr);
-                        }
+                    if (!labelOperand->label.len) {
+                        ERROR_SRC_RET(inst->parseHead, "Immediate or register is not allowed.\n");
+                    }
+                    LabelFixup* fixup = create_fixup(context, inst, labelOperand);
+                    
+                    if (fixup->reloc_size == 1) {
+                        emit_jz8(builder, inst->operands[0].regnum, &fixup->rom_offset);
+                    } else if (fixup->reloc_size == 2) {
+                        emit_jz16(builder, inst->operands[0].regnum, &fixup->rom_offset);
                     } else {
-                        // Immediate
-                        Assert(false);
+                        emit_jz32(builder, inst->operands[0].regnum, &fixup->rom_offset);
                     }
                 } break;
                 case OPCODE_JNZ: {
                     Operand* labelOperand = &inst->operands[1];
-                    if (labelOperand->label.len) {
-                        LabelFixup* fixup = &labelFixups[labelFixups_len];
-                        labelFixups_len++;
-
-                        Section* foundSection;
-                        Label* foundLabel;
-                        bool found = find_label(context, labelOperand->label.ptr, &foundSection, &foundLabel);
-                        if (found) {
-                            uint64_t pc = builder_head(builder);
-                            int64_t relative = foundLabel->estimated_address - pc;
-
-                            if (abs(relative) < 0x80) {
-                                emit_jnz8(builder, inst->operands[0].regnum, &fixup->rom_offset);
-                                fixup->reloc_size = 1;
-                            } else if (abs(relative) < 0x8000) {
-                                emit_jnz16(builder, inst->operands[0].regnum, &fixup->rom_offset);
-                                fixup->reloc_size = 2;
-                            } else {
-                                emit_jnz32(builder, inst->operands[0].regnum, &fixup->rom_offset);
-                                fixup->reloc_size = 4;
-                            }
-                            fixup->label = foundLabel;
-                        } else {
-                            ERROR_SRC_RET(inst->parseHead, "Label %s does not exist.\n", labelOperand->label.ptr);
-                        }
+                    if (!labelOperand->label.len) {
+                        ERROR_SRC_RET(inst->parseHead, "Immediate or register is not allowed.\n");
+                    }
+                    LabelFixup* fixup = create_fixup(context, inst, labelOperand);
+                     
+                    if (fixup->reloc_size == 1) {
+                        emit_jnz8(builder, inst->operands[0].regnum, &fixup->rom_offset);
+                    } else if (fixup->reloc_size == 2) {
+                        emit_jnz16(builder, inst->operands[0].regnum, &fixup->rom_offset);
                     } else {
-                        // Immediate
-                        Assert(false);
+                        emit_jnz32(builder, inst->operands[0].regnum, &fixup->rom_offset);
                     }
                 } break;
                 case OPCODE_JCOND: {
                     Operand* labelOperand = &inst->operands[2];
-                    if (labelOperand->label.len) {
-                        LabelFixup* fixup = &labelFixups[labelFixups_len];
-                        labelFixups_len++;
+                    if (!labelOperand->label.len) {
+                        ERROR_SRC_RET(inst->parseHead, "Immediate or register is not allowed.\n");
+                    }
+                    LabelFixup* fixup = create_fixup(context, inst, labelOperand);
 
-                        Section* foundSection;
-                        Label* foundLabel;
-                        bool found = find_label(context, labelOperand->label.ptr, &foundSection, &foundLabel);
-                        if (found) {
-                            uint64_t pc = builder_head(builder);
-                            int64_t relative = foundLabel->estimated_address - pc;
-
-                            if (abs(relative) < 0x80) {
-                                emit_jcond8(builder, inst->sub_opcode, inst->operands[0].regnum, inst->operands[1].regnum, &fixup->rom_offset);
-                                fixup->reloc_size = 1;
-                            } else if (abs(relative) < 0x8000) {
-                                emit_jcond16(builder, inst->sub_opcode, inst->operands[0].regnum, inst->operands[1].regnum, &fixup->rom_offset);
-                                fixup->reloc_size = 2;
-                            } else {
-                                emit_jcond32(builder, inst->sub_opcode, inst->operands[0].regnum, inst->operands[1].regnum, &fixup->rom_offset);
-                                fixup->reloc_size = 4;
-                            }
-                            fixup->label = foundLabel;
-                        } else {
-                            ERROR_SRC_RET(inst->parseHead, "Label %s does not exist.\n", labelOperand->label.ptr);
-                        }
+                    if (fixup->reloc_size == 1) {
+                        emit_jcond8(builder, inst->sub_opcode, inst->operands[0].regnum, inst->operands[1].regnum, &fixup->rom_offset);
+                    } else if (fixup->reloc_size == 2) {
+                        emit_jcond16(builder, inst->sub_opcode, inst->operands[0].regnum, inst->operands[1].regnum, &fixup->rom_offset);
                     } else {
-                        // Immediate
-                        Assert(false);
+                        emit_jcond32(builder, inst->sub_opcode, inst->operands[0].regnum, inst->operands[1].regnum, &fixup->rom_offset);
                     }
                 } break;
                 case OPCODE_NOT: { EMIT_REG2(not);
@@ -971,6 +933,8 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                 case OPCODE_MFCR: {       EMIT_REG2(mfcr);
                 } break;
                 case OPCODE_MTCR: {       EMIT_REG2(mtcr);
+                } break;
+                case OPCODE_MSCR: {       EMIT_REG2(mscr);
                 } break;
                 case OPCODE_CPUFEAT: { EMIT_REG2(cpufeat);
                 } break;
@@ -1033,43 +997,25 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                     Operand* memoryOperand = &inst->operands[1];
                     if (memoryOperand->label.len == 0) {
                         emit_memop(builder, inst->sub_opcode, memoryOperand->form, inst->operands[0].regnum, memoryOperand->reg_base, memoryOperand->reg_index, memoryOperand->immediate, NULL);
-                    } else {
-                        LabelFixup* fixup = &labelFixups[labelFixups_len];
-                        labelFixups_len++;
+                        break;
+                    }
+                    LabelFixup* fixup = create_fixup(context, inst, memoryOperand);
 
-                        Section* foundSection;
-                        Label* foundLabel;
-                        bool found = find_label(context, memoryOperand->label.ptr, &foundSection, &foundLabel);
-                        if (found) {
-                            fixup->reloc_size = 4;
-
-                            uint64_t pc = builder_head(builder);
-                            int64_t relative = foundLabel->estimated_address - pc;
-
-                            if (abs(relative) < 0x80) {
-                                if (memoryOperand->form == ADDRESSING_PC_DISP32) {
-                                    // Shrink displacement since label is close.
-                                    memoryOperand->form = ADDRESSING_PC_DISP8;
-                                    fixup->reloc_size = 1;
-                                } else if (memoryOperand->form == ADDRESSING_REG1_PC_DISP32) {
-                                    memoryOperand->form = ADDRESSING_REG1_PC_DISP8;
-                                    fixup->reloc_size = 1;
-                                }
-                            } else if (abs(relative) < 0x8000) {
-                                  if (memoryOperand->form == ADDRESSING_PC_DISP32) {
-                                    memoryOperand->form = ADDRESSING_PC_DISP16;
-                                    fixup->reloc_size = 2;
-                                } else if (memoryOperand->form == ADDRESSING_REG1_PC_DISP32) {
-                                    memoryOperand->form = ADDRESSING_REG1_PC_DISP16;
-                                    fixup->reloc_size = 2;
-                                }
-                            }
-                            emit_memop(builder, inst->sub_opcode, memoryOperand->form, inst->operands[0].regnum, memoryOperand->reg_base, memoryOperand->reg_index, memoryOperand->immediate, &fixup->rom_offset);
-                            fixup->label = foundLabel;
-                        } else {
-                            ERROR_SRC_RET(inst->parseHead, "Label %s does not exist.\n", memoryOperand->label.ptr);
+                    if (fixup->reloc_size == 1) {
+                        if (memoryOperand->form == ADDRESSING_PC_DISP32) {
+                            // Shrink displacement since label is close.
+                            memoryOperand->form = ADDRESSING_PC_DISP8;
+                        } else if (memoryOperand->form == ADDRESSING_REG1_PC_DISP32) {
+                            memoryOperand->form = ADDRESSING_REG1_PC_DISP8;
+                        }
+                    } else if (fixup->reloc_size == 2) {
+                            if (memoryOperand->form == ADDRESSING_PC_DISP32) {
+                            memoryOperand->form = ADDRESSING_PC_DISP16;
+                        } else if (memoryOperand->form == ADDRESSING_REG1_PC_DISP32) {
+                            memoryOperand->form = ADDRESSING_REG1_PC_DISP16;
                         }
                     }
+                    emit_memop(builder, inst->sub_opcode, memoryOperand->form, inst->operands[0].regnum, memoryOperand->reg_base, memoryOperand->reg_index, memoryOperand->immediate, &fixup->rom_offset);
                 } break;
                 case OPCODE_PUSH: {       EMIT_REG1(push);
                 } break;
@@ -1096,23 +1042,30 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
             rom_len = rom_stream_offset + rom_stream_length;
     }
 
-    for (int li=0;li<labelFixups_len;li++) {
-        LabelFixup* fixup = &labelFixups[li];
+    for (int li=0;li<context->labelFixups_len;li++) {
+        LabelFixup* fixup = &context->labelFixups[li];
 
         int64_t relative = fixup->label->final_address - (fixup->rom_offset + fixup->reloc_size);
         if (fixup->reloc_size == 1) {
             if (abs(relative) >= 0x80) {
                 fprintf(stderr, "ERROR: Label fixup too big for rel%d (value %zd)\n", fixup->reloc_size*8, relative);
             }
-            // printf("Fixup *0x%zx = %zd\n", fixup->rom_offset, relative);
+            if (options->verbose) {
+                printf("Fixup%d *0x%zx = 0x%zx (final 0x%zx)\n",fixup->reloc_size*8, fixup->rom_offset, relative, relative + fixup->rom_offset + fixup->reloc_size);
+            }
             *(int8_t*)(rom_ptr + fixup->rom_offset) += relative;
         } else if (fixup->reloc_size == 2) {
             if (abs(relative) >= 0x8000) {
                 fprintf(stderr, "ERROR: Label fixup too big for rel%d (value %zd)\n", fixup->reloc_size*8, relative);
             }
-            // printf("Fixup *0x%zx = 0x%zx (final 0x%zx)\n", fixup->rom_offset, relative, relative + fixup->rom_offset + fixup->reloc_size);
+            if (options->verbose) {
+                printf("Fixup%d *0x%zx = 0x%zx (final 0x%zx)\n", fixup->reloc_size*8, fixup->rom_offset, relative, relative + fixup->rom_offset + fixup->reloc_size);
+            }
             *(int16_t*)(rom_ptr + fixup->rom_offset) += relative;
         } else {
+            if (options->verbose) {
+                printf("Fixup%d *0x%zx = 0x%zx (final 0x%zx)\n",fixup->reloc_size*8, fixup->rom_offset, relative, relative + fixup->rom_offset + fixup->reloc_size);
+            }
             *(int32_t*)(rom_ptr + fixup->rom_offset) += relative;
         }
 
@@ -1134,11 +1087,17 @@ int get_regnr(string name) {
              if (equal(name, "CRSTATUS"))    return LWM_REGNR_CRSTATUS;
         else if (equal(name, "CRVB"))        return LWM_REGNR_CRVB;
         else if (equal(name, "CRPT"))        return LWM_REGNR_CRPT;
+        else if (equal(name, "CRISP"))       return LWM_REGNR_CRISP;
+
+        else if (equal(name, "CRESTATUS"))   return LWM_REGNR_CRESTATUS;
         else if (equal(name, "CREPC"))       return LWM_REGNR_CREPC;
+        else if (equal(name, "CRESP"))       return LWM_REGNR_CRESP;
         else if (equal(name, "CRCAUSE"))     return LWM_REGNR_CRCAUSE;
         else if (equal(name, "CRFAULT"))     return LWM_REGNR_CRFAULT;
+
         else if (equal(name, "CRCPUID"))     return LWM_REGNR_CRCPUID;
         else if (equal(name, "CRTIMERCMP"))  return LWM_REGNR_CRTIMERCMP;
+        else if (equal(name, "CRKERNEL"))    return LWM_REGNR_CRKERNEL;
     }
 
     if(name.len < 2 || name.len > 3)

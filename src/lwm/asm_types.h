@@ -11,16 +11,19 @@
 typedef struct {
     string name;
     int object_id;
-    int final_address; // relative to block
-    int estimated_address; // relative to block
+    int final_address;
+    int estimated_addressLow;
+    int estimated_addressHigh;
 } Label;
 
 typedef struct {
     string label;
-    int regnum;
+    union {
+        int regnum;
+        int reg_base;
+    };
     int64_t immediate;
     AddressingForm form;
-    int reg_base;
     int reg_index;
 } Operand;
 

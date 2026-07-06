@@ -1,22 +1,31 @@
 #pragma once
 
 #include <stdint.h>
+#include <stddef.h>
 #include <stdbool.h>
 
 
-#define LWM_REGNR_PC 32
-#define LWM_REGNR_SP 15
-#define LWM_REGNR_LR 14
 #define LWM_REGNR_TP 13
+#define LWM_REGNR_LR 14
+#define LWM_REGNR_SP 15
+#define LWM_REGNR_PC 32
 
-#define LWM_REGNR_CRSTATUS     0
-#define LWM_REGNR_CRVB         1
-#define LWM_REGNR_CRPT         2
-#define LWM_REGNR_CREPC        3
-#define LWM_REGNR_CRCAUSE      4
-#define LWM_REGNR_CRFAULT      5
-#define LWM_REGNR_CRCPUID      6
-#define LWM_REGNR_CRTIMERCMP   7
+typedef enum {
+    LWM_REGNR_CRSTATUS,
+    LWM_REGNR_CRVB,
+    LWM_REGNR_CRPT,
+    LWM_REGNR_CRISP,
+
+    LWM_REGNR_CRESTATUS,
+    LWM_REGNR_CREPC,
+    LWM_REGNR_CRESP,
+    LWM_REGNR_CRCAUSE,
+    LWM_REGNR_CRFAULT,
+
+    LWM_REGNR_CRCPUID,
+    LWM_REGNR_CRTIMERCMP,
+    LWM_REGNR_CRKERNEL,
+} ControlRegister;
 
 
 #define CRSTATUS_USER        ((size_t)0x2)
@@ -67,6 +76,7 @@ typedef enum {
     OPCODE_NOT,
     OPCODE_MFCR,
     OPCODE_MTCR,
+    OPCODE_MSCR,
     OPCODE_CPUFEAT,
 
     // [ opcode 8 | reg 5 | reg 5 | reg 5 ]
@@ -176,7 +186,10 @@ typedef enum {
 } AddressingForm;
 
 
-int largest_encoding(int opcode, AddressingForm form);
+int largest_encoding_ext(int opcode, AddressingForm form, int* lowestBytes);
+static inline int largest_encoding(int opcode, AddressingForm form) {
+    return largest_encoding_ext(opcode, form, NULL);
+}
 
 void gpr_to_string(int reg, char regname[20]);
 void cr_to_string(int reg, char regname[20]);

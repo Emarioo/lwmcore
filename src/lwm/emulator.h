@@ -5,6 +5,9 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include <setjmp.h>
+
+typedef struct EmulatorContext EmulatorContext;
 
 
 typedef enum {
@@ -18,34 +21,48 @@ typedef struct {
 
     CoreMode mode;
 
-    uint64_t gprs[32];
+    union {
+        uint64_t gprs[32];
+        struct {
+            uint64_t _[13];
+            uint64_t tp;
+            uint64_t lr;
+            uint64_t sp;
+        };
+    };
     uint64_t pc;
-    #define tp gprs[13]
-    #define lr gprs[14]
-    #define sp gprs[15]
 
-    uint64_t crs[32];
+    union {
+        uint64_t crs[32];
+        struct {
+            uint64_t crstatus;
+            uint64_t crvb;        // Vector base
+            uint64_t crpt;        // Root page table
+            uint64_t crisp;       // interrupt stack pointer. SP = ISP on exceptions
+
+            uint64_t crestatus;   // ESTATUS = STATUS on exceptions
+            uint64_t crepc;       // EPC = PC on exceptions
+            uint64_t cresp;       // ESP = SP on exceptions
+            uint64_t crcause;
+            uint64_t crfault;
+
+            uint64_t crcpuid;
+            uint64_t crtimercmp;
+            uint64_t crkernel;    // Reserved control register for Kernel
+        };
+    };
 
     // bool insideInterrupt;
     bool insideFault;
     bool insideDoubleFault;
 
-    #define crstatus crs[0]
-    #define crvb     crs[1]
-    #define crpt     crs[2]
-    #define crepc    crs[3]
-    #define crcause  crs[4]
-    #define crfault  crs[5]
-    #define crcpuid  crs[6]
-    #define crtimercmp  crs[7]
-    #define crestatus  crs[8]
-
     uint64_t tickCounter;
 
 } CoreState;
 
-typedef bool(*FN_mmio_read )(uintptr_t address, size_t size, void* data);
-typedef bool(*FN_mmio_write)(uintptr_t address, size_t size, void* data);
+
+typedef bool(*FN_mmio_read )(EmulatorContext* emulator, uintptr_t address, size_t size, void* data);
+typedef bool(*FN_mmio_write)(EmulatorContext* emulator, uintptr_t address, size_t size, void* data);
 
 typedef struct {
     FN_mmio_read  mmio_read;
@@ -63,6 +80,20 @@ typedef struct {
     int              devices_len;
     HardwareDevice** devices;
 } PlatformConfig;
+
+struct EmulatorContext {
+    CoreState coreState;
+    PlatformConfig* platformConfig;
+    
+    uint8_t* physicalMemory;
+    uint64_t physicalMemory_size;
+
+    bool running;
+
+    jmp_buf loop_jmpbuf;
+
+};
+
 
 
 

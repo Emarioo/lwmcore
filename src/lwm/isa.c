@@ -14,20 +14,26 @@ void gpr_to_string(int reg, char regname[20]) {
 }
 void cr_to_string(int reg, char regname[20]) {
     // @TODO Make function to convert regnum to string
-    switch (reg) {
+    switch ((ControlRegister)reg) {
         case LWM_REGNR_CRSTATUS:   sprintf(regname, "CRSTATUS"); break;
         case LWM_REGNR_CRVB:       sprintf(regname, "CRVB"); break;
         case LWM_REGNR_CRPT:       sprintf(regname, "CRPT"); break;
+        case LWM_REGNR_CRISP:      sprintf(regname, "CRISP"); break;
+
+        case LWM_REGNR_CRESTATUS:  sprintf(regname, "CRESTATUS"); break;
         case LWM_REGNR_CREPC:      sprintf(regname, "CREPC"); break;
+        case LWM_REGNR_CRESP:      sprintf(regname, "CRESP"); break;
         case LWM_REGNR_CRCAUSE:    sprintf(regname, "CRCAUSE"); break;
         case LWM_REGNR_CRFAULT:    sprintf(regname, "CRFAULT"); break;
+
         case LWM_REGNR_CRCPUID:    sprintf(regname, "CRCPUID"); break;
         case LWM_REGNR_CRTIMERCMP: sprintf(regname, "CRTIMERCMP"); break;
-        default:                   sprintf(regname, "cr%d", reg); break;
+        case LWM_REGNR_CRKERNEL:   sprintf(regname, "CRKERNEL"); break;
     }
+    sprintf(regname, "cr%d", reg);
 }
 
-int largest_encoding(int opcode, AddressingForm form) {
+int largest_encoding_ext(int opcode, AddressingForm form, int* lowestBytes) {
 
     switch ((OpcodeKind)opcode) {
         case OPCODE_LI8:        return 3;
@@ -43,6 +49,7 @@ int largest_encoding(int opcode, AddressingForm form) {
         case OPCODE_NOT:
         case OPCODE_MFCR:
         case OPCODE_MTCR:
+        case OPCODE_MSCR:
         case OPCODE_CPUFEAT:
             return 3;
         case OPCODE_ADD:
@@ -65,6 +72,7 @@ int largest_encoding(int opcode, AddressingForm form) {
         case OPCODE_CALL:
         case OPCODE_CALL1:
         case OPCODE_CALL2:
+            *lowestBytes = 2;
             return 5;
         case OPCODE_RET:
         case OPCODE_SYSCALL:
@@ -103,7 +111,7 @@ int largest_encoding(int opcode, AddressingForm form) {
                 case ADDRESSING_REG1_DISP16:    
                 case ADDRESSING_REG1_PC_DISP16: return 5;
                 case ADDRESSING_REG1_DISP32:    
-                case ADDRESSING_REG1_PC_DISP32: return 7;
+                case ADDRESSING_REG1_PC_DISP32: *lowestBytes = 4; return 7;
                 case ADDRESSING_REG1_DISP64:    return 11;
                 case ADDRESSING_REG2_DISP8:     return 5;
                 case ADDRESSING_REG2_DISP16:    return 6;
@@ -111,7 +119,7 @@ int largest_encoding(int opcode, AddressingForm form) {
                 case ADDRESSING_REG2_DISP64:    return 12;
                 case ADDRESSING_PC_DISP8:       return 3;
                 case ADDRESSING_PC_DISP16:      return 4;
-                case ADDRESSING_PC_DISP32:      return 6;
+                case ADDRESSING_PC_DISP32:      *lowestBytes = 3; return 6;
             }
         case OPCODE_RDTICK: return 2;
         case OPCODE_RDTICK1: return 3;
@@ -137,6 +145,7 @@ const char* opcode_to_string(int opcode) {
         CASE(OPCODE_NOT, "not")
         CASE(OPCODE_MFCR, "mfcr")
         CASE(OPCODE_MTCR, "mtcr")
+        CASE(OPCODE_MSCR, "mscr")
         CASE(OPCODE_CPUFEAT, "cpufeat")
         CASE(OPCODE_ADD, "add")
         CASE(OPCODE_SUB, "sub")

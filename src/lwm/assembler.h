@@ -11,6 +11,7 @@ typedef struct {
     // cpu options
 
     bool quiet;
+    bool verbose;
 
     // output options
     const char* outputPath;

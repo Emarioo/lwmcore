@@ -74,6 +74,17 @@ An instruction consists of a mnemonic and operands. Operands may include registe
 
 The [CPU](/docs/cpu.md#instruction-set) document describes the available instructions, their operands, and the available registers.
 
+### Pseudo instructions
+
+
+
+```arm
+hlt // stb r0, [0xFFF0]
+
+
+mov r0, r1 // or r0, r1, r1
+```
+
 ### Example:
 ```arm
 main:
@@ -88,6 +99,7 @@ end:
 **TODO**: Cover special memory arithmetic syntax, if we have it?
 
 **TODO**: Show how to reference a variable.
+
 
 ## Global variable
 Global variables store data in memory. They are defined with a type and an optional value or multiple values if type is an array. Variables without values are initialized to zero. The "values" part is called initializer.

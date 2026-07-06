@@ -22,6 +22,7 @@ instruction push     reg COMMON
 instruction pop      reg COMMON
 instruction tlbflush reg RARE
 
+instruction mov     reg reg COMMON
 instruction not     reg reg
 instruction mfcr    reg reg RARE
 instruction mtcr    reg reg RARE

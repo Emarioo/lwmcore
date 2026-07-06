@@ -142,6 +142,9 @@ void emit_mfcr(Builder* builder, int reg0, int reg1) {
 void emit_mtcr(Builder* builder, int reg0, int reg1) {
     EMIT_REG2(OPCODE_MTCR);
 }
+void emit_mscr(Builder* builder, int reg0, int reg1) {
+    EMIT_REG2(OPCODE_MSCR);
+}
 void emit_cpufeat(Builder* builder, int reg0, int reg1) {
     EMIT_REG2(OPCODE_CPUFEAT);
 }
@@ -426,7 +429,7 @@ void emit_jmp8(Builder* builder, uint64_t* fixup) {
 }
 void emit_jmp16(Builder* builder, uint64_t* fixup) {
     uint8_t bytes[] = {
-        OPCODE_JMP,
+        OPCODE_JMP1,
         0, 0
     };
     APPEND_BYTES(bytes)
@@ -434,7 +437,7 @@ void emit_jmp16(Builder* builder, uint64_t* fixup) {
 }
 void emit_jmp32(Builder* builder, uint64_t* fixup) {
     uint8_t bytes[] = {
-        OPCODE_JMP,
+        OPCODE_JMP2,
         0, 0, 0, 0
     };
     APPEND_BYTES(bytes)
@@ -450,7 +453,7 @@ void emit_call8(Builder* builder, uint64_t* fixup) {
 }
 void emit_call16(Builder* builder, uint64_t* fixup) {
     uint8_t bytes[] = {
-        OPCODE_CALL,
+        OPCODE_CALL1,
         0, 0
     };
     APPEND_BYTES(bytes)
@@ -458,7 +461,7 @@ void emit_call16(Builder* builder, uint64_t* fixup) {
 }
 void emit_call32(Builder* builder, uint64_t* fixup) {
     uint8_t bytes[] = {
-        OPCODE_CALL,
+        OPCODE_CALL2,
         0, 0, 0, 0
     };
     APPEND_BYTES(bytes)

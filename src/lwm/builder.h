@@ -46,6 +46,7 @@ void emit_tlbflush(Builder* builder, int reg0);
 void emit_not(Builder* builder, int reg0, int reg1);
 void emit_mfcr(Builder* builder, int reg0, int reg1);
 void emit_mtcr(Builder* builder, int reg0, int reg1);
+void emit_mscr(Builder* builder, int reg0, int reg1);
 void emit_cpufeat(Builder* builder, int reg0, int reg1);
 
 void emit_add(Builder* builder, int reg0, int reg1, int reg2);

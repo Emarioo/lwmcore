@@ -146,6 +146,7 @@ int main(int argc, const char** argv) {
         
         AssemblerOptions options = {0};
         options.quiet = be_quiet;
+        options.verbose = verbose;
         options.sourcePath = assembly_file.ptr;
         if (bin_file.len) {
             options.outputPath = bin_file.ptr;

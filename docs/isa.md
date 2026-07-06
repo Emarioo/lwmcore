@@ -498,7 +498,7 @@ Note that 16-bit CPU only has 16 registers.
 |r0 - r3|Arguments and return values|
 |r4 - r7|Arguments|
 |r8 - r12|Non-volatile|
-|r13 - r15|Reserved (alias for sp,lr,rtb)|
+|r13 - r15|Reserved (alias for sp,lr,tp)|
 |r16 - r31|Non-volatile|
 |sp|Stack pointer|
 |lr|Link register|
@@ -517,6 +517,7 @@ Note that 16-bit CPU only has 16 registers.
 | CRFAULT | Page faulting address |
 | CRCPUID | Current CPU ID |
 | CRTIMERCMP | Timer Compare Target |
+| CRKERNEL | An unused register the kernel can use for whatever it wants. Useful because a user program cannot touch it. |
 
 
 # Instructions
@@ -636,6 +637,7 @@ lea r0, [r1 + r2*scale + disp]
 |-|-|
 |mtcr|Move to Control Register|
 |mfcr|Move from Control Register|
+|mscr|Swap General Purpose Register with Control Register|
 |syscall|System call|
 |vret|Vector return|
 |rdtick|Read tick counter|
@@ -646,3 +648,78 @@ lea r0, [r1 + r2*scale + disp]
 |tlbflush|Flushes one page, not needed if process identifiers are used. Switching page table with 0 as process identifier flushes whole page table|
 |slow|Indicate spinlock to the CPU|
 |wfi|Wait for interrupt|
+
+
+# Known Issues
+
+In an exception handler you want to save registers somewhere. To the stack or to a kernel block of memory or in a process context memory block. To do so you must load pointers and use registers. But you can't use registers because you are trying to save them.
+You can push to a global variable but that doesn't work with multiple threads. You can get CPUID and index into an array of temp data per CORE but you need to move CPUID to general purpose register so that's not possible.
+
+The solution at the moment is adding CRKERNEL which the kernel can do whatever it wants with. The kernel can reserve it for use in exception handlers to move GPRs to. It can store CORE context pointer in it or whatever. We implement `mscr` to swap general purpose and control registers.
+
+```arm
+
+
+#define CONTEXT_SIZE 512
+core_context:
+    byte[32*#CONTEXT_SIZE]
+
+timer_hits:
+    long 0
+
+ex_handler:
+    
+    mtcr r0, CRKERNEL
+    mfcr r0, CRCPUID
+
+    umul r0, r0, #CONTEXT_SIZE
+    lea r0, [core_context + r0]
+
+    sth r1, [r0 + 2]
+    
+    ldh r1, [timer_hits]
+    add r1, r1, 1
+    sth r1, [timer_hits]
+
+    mfcr r0, CRKERNEL
+    vret
+
+ex_handler:
+    mscr sp, CRKERNEL
+
+    push r1
+
+    ldh r1, [timer_hits]
+    add r1, r1, 1
+    sth r1, [timer_hits]
+
+    pop r1
+
+    mscr sp, CRKERNEL
+
+    vret
+
+```
+
+Alternatively we implement CREXSTACK and CRESP which does `CRESP = SP; SP = CREXSTACK` on exceptions. `vret` would `SP = CRESP`. It could push the stack pointer onto the exception stack if you don't want CRESP as extra control register.
+
+```arm
+    byte[512]
+exstack:
+
+init_exstack:
+    // Prepare exception stack
+    lea r0, [exstack]
+    mtcr r0, CREXSTACK
+    ret
+
+ex_handler:
+    push r1
+    
+    ldh r1, [timer_hits]
+    add r1, r1, 1
+    sth r1, [timer_hits]
+
+    pop r1
+    vret
+```
