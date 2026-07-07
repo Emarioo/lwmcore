@@ -15,20 +15,20 @@ void gpr_to_string(int reg, char regname[20]) {
 void cr_to_string(int reg, char regname[20]) {
     // @TODO Make function to convert regnum to string
     switch ((ControlRegister)reg) {
-        case LWM_REGNR_CRSTATUS:   sprintf(regname, "CRSTATUS"); break;
-        case LWM_REGNR_CRVB:       sprintf(regname, "CRVB"); break;
-        case LWM_REGNR_CRPT:       sprintf(regname, "CRPT"); break;
-        case LWM_REGNR_CRISP:      sprintf(regname, "CRISP"); break;
+        case LWM_REGNR_CRSTATUS:   sprintf(regname, "CRSTATUS"); return;
+        case LWM_REGNR_CRVB:       sprintf(regname, "CRVB"); return;
+        case LWM_REGNR_CRPT:       sprintf(regname, "CRPT"); return;
+        case LWM_REGNR_CRISP:      sprintf(regname, "CRISP"); return;
 
-        case LWM_REGNR_CRESTATUS:  sprintf(regname, "CRESTATUS"); break;
-        case LWM_REGNR_CREPC:      sprintf(regname, "CREPC"); break;
-        case LWM_REGNR_CRESP:      sprintf(regname, "CRESP"); break;
-        case LWM_REGNR_CRCAUSE:    sprintf(regname, "CRCAUSE"); break;
-        case LWM_REGNR_CRFAULT:    sprintf(regname, "CRFAULT"); break;
+        case LWM_REGNR_CRESTATUS:  sprintf(regname, "CRESTATUS"); return;
+        case LWM_REGNR_CREPC:      sprintf(regname, "CREPC"); return;
+        case LWM_REGNR_CRESP:      sprintf(regname, "CRESP"); return;
+        case LWM_REGNR_CRCAUSE:    sprintf(regname, "CRCAUSE"); return;
+        case LWM_REGNR_CRFAULT:    sprintf(regname, "CRFAULT"); return;
 
-        case LWM_REGNR_CRCPUID:    sprintf(regname, "CRCPUID"); break;
-        case LWM_REGNR_CRTIMERCMP: sprintf(regname, "CRTIMERCMP"); break;
-        case LWM_REGNR_CRKERNEL:   sprintf(regname, "CRKERNEL"); break;
+        case LWM_REGNR_CRCPUID:    sprintf(regname, "CRCPUID"); return;
+        case LWM_REGNR_CRTIMERCMP: sprintf(regname, "CRTIMERCMP"); return;
+        case LWM_REGNR_CRKERNEL:   sprintf(regname, "CRKERNEL"); return;
     }
     sprintf(regname, "cr%d", reg);
 }

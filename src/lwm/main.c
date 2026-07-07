@@ -131,6 +131,26 @@ int main(int argc, const char** argv) {
     PlatformConfig config = {0};
     config.quiet = be_quiet;
     config.verbose = verbose;
+    config.core_count = 2;
+    config.core_mode = MODE_16;
+
+    FN_init deviceConstructors[] = {
+        dev_create_emu,
+        dev_create_ic,
+        dev_create_uart,
+        platform_init,
+    };
+    
+    config.devices_len = ARRAY_LENGTH(deviceConstructors);
+    config.devices = malloc(sizeof(HardwareDevice*) * config.devices_len);
+    memset(config.devices, 0, sizeof(HardwareDevice*) * config.devices_len);
+
+    for (int i=0;i<config.devices_len;i++) {
+        HardwareDevice* device = calloc(1, sizeof(HardwareDevice));
+        config.devices[i] = device;
+        device->init = deviceConstructors[i];
+    }
+    
 
     if(file_is_subassembly) {
         BlotterData* data = decompose_blotter_file(assembly_file);
@@ -190,26 +210,6 @@ int main(int argc, const char** argv) {
     }
 
     if (do_emulate) {
-        
-        FN_init deviceConstructors[] = {
-            dev_create_emu,
-            dev_create_ic,
-            dev_create_uart,
-            platform_init,
-        };
-        
-        config.devices_len = ARRAY_LENGTH(deviceConstructors);
-        config.devices = malloc(sizeof(HardwareDevice*) * config.devices_len);
-        memset(config.devices, 0, sizeof(HardwareDevice*) * config.devices_len);
-
-        for (int i=0;i<config.devices_len;i++) {
-            HardwareDevice* device = calloc(1, sizeof(HardwareDevice));
-            config.devices[i] = device;
-            device->init = deviceConstructors[i];
-        }
-        
-        config.core_count = 2;
-        config.core_mode = MODE_16;
         emulator_start(&config);
     }
 

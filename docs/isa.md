@@ -86,6 +86,8 @@ The CPU will look in a vector table specified by the control register CRVB. The 
 
 The handler itself can acquire information about the exception through these control registers:
 
+This table is outdated 
+
 | Register | Description |
 |----------|---------|
 | CREPC    | Exception return address |
@@ -117,12 +119,7 @@ The handler itself can acquire information about the exception through these con
 Bytes at the program counter cannot be decoded into a valid instruction.
 
 - `CREPC` will hold the program counter at which the illegal instruction begins.
-- `CRCAUSE` describes details around who caused the syscall (user/supervisor).
-
-|CRCAUSE bit|Reason|Description|
-|-|-|-|
-|0|Reserved||
-|1|User|Set according to the user bit in CRSTATUS.|
+- `CRESTATUS` describes details around who caused the syscall (user/supervisor).
 
 ### Protection Fault
 

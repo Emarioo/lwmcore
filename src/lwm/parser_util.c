@@ -545,7 +545,7 @@ bool preprocess_text(const string in_text, string* out_text) {
                         ERROR_SRC_RET(head, "Expected parenthesis or comma.\n");
                     }
                 }
-                parse_space(context, &head);
+                parse_space_not_newline(context, &head);
             }
 
             int body_start = head;
@@ -686,6 +686,8 @@ bool preprocess_text(const string in_text, string* out_text) {
                     }
 
                     head++;
+                    argStart = head;
+                    argEnd = head;
                     if (chr == ')') {
                         break;
                     }

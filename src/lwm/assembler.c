@@ -39,7 +39,8 @@ typedef struct {
 } AssemblerContext;
 
 
-
+#define MAX_OBJECTS 400
+#define MAX_LABELS 100
 
 
 #define parse_space(CTX, ...) parse_space(&CTX->parserContext, __VA_ARGS__)
@@ -64,10 +65,21 @@ int get_regnr(string name);
 #define LOG_SRC(HEAD, FORMAT, ...) Location loc = count_lines(context, HEAD); log_src(loc, FORMAT, ##__VA_ARGS__);
 
 
+// void add_object() {
+
+// }
+// void add_label(Section* section) {
+    
+//     if (section->)
+//     Assert(currentSection->labels_len < currentSection->labels_max);
+//     Label* label = &currentSection->labels[currentSection->labels_len];
+//     currentSection->labels_len++;
+// }
+
 bool find_label(AssemblerContext* context, const char* name, Section** out_section, Label** out_label) {
     for (int si=0;si<context->sections_len;si++) {
         Section* section = &context->sections[si];
-        for (int li=0;li<section->label_len;li++) {
+        for (int li=0;li<section->labels_len;li++) {
             Label* label = &section->labels[li];
             if (equal(label->name, name)) {
                 *out_section = section;
@@ -91,16 +103,23 @@ LabelFixup* create_fixup(AssemblerContext* context, Instruction* inst, Operand* 
     }
 
     uint64_t pc = builder_head(context->builder);
+    
     int64_t relativeLow = foundLabel->estimated_addressLow - pc + labelOperand->immediate;
     int64_t relativeHigh = foundLabel->estimated_addressHigh - pc + labelOperand->immediate;
 
-    if (abs(relativeLow) < 0x80 && abs(relativeHigh) < 0x80) {
+    // Because PC refers to the start of the instruction and not the end (since we haven't emitted it yet)
+    // we add a margin of 4 bytes to make up for it. If any instruction with label has more than 4 bytes
+    // we are in trouble. At the very least our label fixup code will cause an error when this happens.
+    int margin = 0;
+
+    if (abs(relativeLow) < 0x80-margin && abs(relativeHigh) < 0x80-margin) {
         fixup->reloc_size = 1;
-    } else if (abs(relativeLow) < 0x8000 && abs(relativeHigh) < 0x8000) {
+    } else if (abs(relativeLow) < 0x8000-margin && abs(relativeHigh) < 0x8000-margin) {
         fixup->reloc_size = 2;
     } else {
         fixup->reloc_size = 4;
     }
+    // printf("Create fixup '%s' pc=0x%zx relL=%zd relH=%zd rsize=%d\n", foundLabel->name.ptr, pc, relativeLow, relativeHigh, fixup->reloc_size);
     fixup->label = foundLabel;
     return fixup;
 }
@@ -131,7 +150,7 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
         return LWM_ASM_ERROR_BAD;
     }
 
-    // writeFile("temp.pp", out_text.ptr, out_text.len);
+    writeFile("temp.pp", out_text.ptr, out_text.len);
 
     const char* text = out_text.ptr;
     int text_len = out_text.len;
@@ -168,12 +187,14 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
         section->location = loc;
         context->sections_len++;
 
-        section->label_len = 0;
+        section->labels_len = 0;
+        section->labels_max = MAX_LABELS;
         section->objects_len = 0;
-        section->labels = malloc(sizeof(Label) * 100);
-        section->objects = malloc(sizeof(Object) * 100);
-        memset(section->labels, 0, sizeof(Label) * 100);
-        memset(section->objects, 0, sizeof(Object) * 100);
+        section->objects_max = MAX_OBJECTS;
+        section->labels = malloc(sizeof(Label) * section->labels_max);
+        section->objects = malloc(sizeof(Object) * section->objects_max);
+        memset(section->labels, 0, sizeof(Label) * section->labels_max);
+        memset(section->objects, 0, sizeof(Object) * section->objects_max);
     }
 
     int head = 0;
@@ -256,9 +277,10 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                 int labels_len = 0;
                 int labels_max = 0;
 
-                // @TODO Check object limit
 
                 Section* currentSection = &context->sections[context->sections_len-1];
+
+                Assert(currentSection->objects_len < currentSection->objects_max);
                 Object* object = &currentSection->objects[currentSection->objects_len];
                 memset(object, 0, sizeof(*object));
                 currentSection->objects_len++;
@@ -390,9 +412,8 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                 }
 
 
-                // @TODO Check object limit
-
                 Section* currentSection = &context->sections[context->sections_len-1];
+                Assert(currentSection->objects_len < currentSection->objects_max);
                 Object* object = &currentSection->objects[currentSection->objects_len];
                 memset(object, 0, sizeof(*object));
                 currentSection->objects_len++;
@@ -440,12 +461,14 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
             }
 
             section->name = sectionName;
-            section->label_len = 0;
+            section->labels_len = 0;
+            section->labels_max = MAX_LABELS;
             section->objects_len = 0;
-            section->labels = malloc(sizeof(Label) * 100);
-            section->objects = malloc(sizeof(Object) * 100);
-            memset(section->labels, 0, sizeof(Label) * 100);
-            memset(section->objects, 0, sizeof(Object) * 100);
+            section->objects_max = MAX_OBJECTS;
+            section->labels = malloc(sizeof(Label) * section->labels_max);
+            section->objects = malloc(sizeof(Object) * section->objects_max);
+            memset(section->labels, 0, sizeof(Label) * section->labels_max);
+            memset(section->objects, 0, sizeof(Object) * section->objects_max);
 
             estimated_addressLow = 0;
             estimated_addressHigh = 0;
@@ -462,8 +485,14 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
             if(!parsed_chars) {
                 ERROR_SRC_RET(head, "Expected an integer, not '%c'\n", get_char(context, head));
             }
+            if(alignment == 0 || alignment == 1) {
+                ERROR_SRC_RET(head, "Alignment by zero or one is pointless, was it a mistake?\n");
+            }
 
-            queuedAlignment = 32 - lzcnt(alignment);
+            queuedAlignment = 32 - lzcnt(alignment)-1;
+
+            estimated_addressLow += 0;
+            estimated_addressHigh += alignment-1;
 
             continue;
         }
@@ -477,13 +506,22 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
         if (get_char(context, head) == ':') {
             // label
             Section* currentSection = &context->sections[context->sections_len-1];
-            // if (currentSection->label_len >= MAX_LABELS_PER_BLOCK) {
+            // if (currentSection->labels_len >= MAX_LABELS_PER_BLOCK) {
             //     ERROR_SRC_RET(location_head, "Max label limit reached! (%d)\n", MAX_LABELS_PER_BLOCK);
             // }
 
+            Section* sec;
+            Label* lab;
+            bool exists = find_label(context, name.ptr, &sec, &lab);
+            if (exists) {
+                ERROR_SRC_RET(head, "Label '%s' already exists\n", name.ptr);
+            }
+
             head++;
-            Label* label = &currentSection->labels[currentSection->label_len];
-            currentSection->label_len++;
+
+            Assert(currentSection->labels_len < currentSection->labels_max);
+            Label* label = &currentSection->labels[currentSection->labels_len];
+            currentSection->labels_len++;
 
             label->estimated_addressLow = estimated_addressLow;
             label->estimated_addressHigh = estimated_addressHigh;
@@ -733,6 +771,7 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
         }
         
         Section* currentSection = &context->sections[context->sections_len-1];
+        Assert(currentSection->objects_len < currentSection->objects_max);
         Object* object = &currentSection->objects[currentSection->objects_len];
         currentSection->objects_len++;
 
@@ -783,11 +822,11 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
     // Apply absolute address to labels
     for(int i=0;i<section_len;i++) {
         Section* section = &context->sections[i];
-        for(int j=0;j<section->label_len;j++) {
+        for(int j=0;j<section->labels_len;j++) {
             Label* label = &section->labels[j];
             label->estimated_addressLow += section->addr;
             label->estimated_addressHigh += section->addr;
-            // label->final_address += section->addr;
+            // printf("Label %s, 0x%zx 0x%zx\n", label->name.ptr, label->estimated_addressLow, label->estimated_addressHigh);
         }
     }
     
@@ -847,7 +886,7 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
             */
 
             // Update label addresses
-            while (checkLabelIndex < section->label_len) {
+            while (checkLabelIndex < section->labels_len) {
                 Label* label = &section->labels[checkLabelIndex];
                 if (label->object_id != oi) {
                     break;
@@ -1103,6 +1142,14 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
             rom_len = rom_stream_offset + rom_stream_length;
     }
 
+    // for(int i=0;i<section_len;i++) {
+    //     Section* section = &context->sections[i];
+    //     for(int j=0;j<section->labels_len;j++) {
+    //         Label* label = &section->labels[j];
+    //         printf("Label %s, 0x%zx\n", label->name.ptr, label->final_address);
+    //     }
+    // }
+
     if (options->verbose) {
         printf("Estimated sections:\n");
     }
@@ -1129,42 +1176,57 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
         LabelFixup* fixup = &context->labelFixups[li];
 
         if (!fixup->absolute) {
-            int64_t relative = fixup->label->final_address - (fixup->rom_offset + fixup->reloc_size);
+            uint64_t final_address = fixup->label->final_address;
+            if (fixup->reloc_size == 1) {
+                final_address += *(int8_t*)(rom_ptr + fixup->rom_offset);
+            } else if (fixup->reloc_size == 2) {
+                final_address += *(int16_t*)(rom_ptr + fixup->rom_offset);
+            } else if (fixup->reloc_size == 4) {
+                final_address += *(int32_t*)(rom_ptr + fixup->rom_offset);
+            }
+            int64_t relative = final_address - (fixup->rom_offset + fixup->reloc_size);
             if (options->verbose) {
-                printf("Fixup%d *0x%zx += 0x%zx (final 0x%zx)\n",fixup->reloc_size*8, fixup->rom_offset, relative, fixup->label->final_address);
+                printf("Fixup%d *0x%zx += 0x%zx (final 0x%zx)\n",fixup->reloc_size*8, fixup->rom_offset, relative, final_address);
             }
             if (fixup->reloc_size == 1) {
                 if (abs(relative) >= 0x80) {
-                    error("Label fixup too big for rel%d (value %zd)\n", fixup->reloc_size*8, relative);
+                    error("Label '%s' fixup too big for rel%d (value %zd)\n", fixup->label->name.ptr, fixup->reloc_size*8, relative);
                     longjmp(context->jumpBuffer, 1);
                 }
-                *(int8_t*)(rom_ptr + fixup->rom_offset) += relative;
+                *(int8_t*)(rom_ptr + fixup->rom_offset) = relative;
             } else if (fixup->reloc_size == 2) {
                 if (abs(relative) >= 0x8000) {
-                    error("Label fixup too big for rel%d (value %zd)\n", fixup->reloc_size*8, relative);
+                    error("Label '%s' fixup too big for rel%d (value %zd)\n", fixup->label->name.ptr, fixup->reloc_size*8, relative);
                     longjmp(context->jumpBuffer, 1);
                 }
-                *(int16_t*)(rom_ptr + fixup->rom_offset) += relative;
+                *(int16_t*)(rom_ptr + fixup->rom_offset) = relative;
             } else {
                 
-                *(int32_t*)(rom_ptr + fixup->rom_offset) += relative;
+                *(int32_t*)(rom_ptr + fixup->rom_offset) = relative;
             }
             continue;
         }
 
         uintptr_t abs_address = fixup->label->final_address;
+        if (fixup->reloc_size == 1) {
+            abs_address += *(int8_t*)(rom_ptr + fixup->rom_offset);
+        } else if (fixup->reloc_size == 2) {
+            abs_address += *(int16_t*)(rom_ptr + fixup->rom_offset);
+        } else if (fixup->reloc_size == 4) {
+            abs_address += *(int32_t*)(rom_ptr + fixup->rom_offset);
+        }
         if (options->verbose) {
-            printf("Fixup%d *0x%zx = 0x%zx\n", fixup->reloc_size*8, fixup->rom_offset, fixup->label->final_address);
+            printf("Fixup%d *0x%zx = 0x%zx\n", fixup->reloc_size*8, fixup->rom_offset, abs_address);
         }
         if (fixup->reloc_size == 1) {
             if (abs_address > 0xFF) {
-                error("Label fixup too big for rel%d (value 0x%zx)\n", fixup->reloc_size*8, abs_address);
+                error("Label '%s' fixup too big for abs%d (value 0x%zx)\n", fixup->label->name.ptr, fixup->reloc_size*8, abs_address);
                 longjmp(context->jumpBuffer, 1);
             }
             *(int8_t*)(rom_ptr + fixup->rom_offset) = abs_address;
         } else if (fixup->reloc_size == 2) {
             if (abs_address > 0xFFFF) {
-                error("Label fixup too big for rel%d (value 0x%zx)\n", fixup->reloc_size*8, abs_address);
+                error("Label '%s' fixup too big for abs%d (value 0x%zx)\n", fixup->label->name.ptr, fixup->reloc_size*8, abs_address);
                 longjmp(context->jumpBuffer, 1);
             }
             *(int16_t*)(rom_ptr + fixup->rom_offset) = abs_address;

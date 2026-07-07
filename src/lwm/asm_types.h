@@ -67,9 +67,11 @@ typedef struct {
     Location location;
     
     int     objects_len;
+    int     objects_max;
     Object* objects;
     
-    int     label_len;
+    int     labels_len;
+    int     labels_max;
     Label*  labels;
 } Section;
 

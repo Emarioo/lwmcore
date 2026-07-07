@@ -18,15 +18,10 @@
 #define USER_ENABLED() (core->crstatus & CRSTATUS_USER)
 
 // @TODO Misaligned reads
-#define  READ8(address) read_address8(core, address)
-#define READ16(address) read_address16(core, address)
-#define READ32(address) read_address32(core, address)
-#define READ64(address) read_address64(core, address)
-
-#define  WRITE8(address, value) write_address8(core, address, value)
-#define WRITE16(address, value) write_address16(core, address, value)
-#define WRITE32(address, value) write_address32(core, address, value)
-#define WRITE64(address, value) write_address64(core, address, value)
+#define  READ8(address) read_exec_address8(core, address)
+#define READ16(address) read_exec_address16(core, address)
+#define READ32(address) read_exec_address32(core, address)
+#define READ64(address) read_exec_address64(core, address)
 
 
 #define BITMASK(WORD, BL, BH) ( ((WORD) >> BL) & ( ((uint64_t)1 << ((1+BH)-BL)) - 1 ) )
@@ -71,125 +66,194 @@ void check_privilege(CoreState* core) {
     }
 }
 
-void access_address(CoreState* core, uint64_t address, uint64_t size) {
+
+typedef enum {
+    MMU_READ,
+    MMU_WRITE,
+    MMU_READ_EXEC,
+} MMUOperation;
+
+void mmu_operation(CoreState* core, MMUOperation operation, uint64_t address, uint64_t size, void* data, bool physical) {
+    EmulatorContext* emulator = core->emulator;
+    
     // printf("ACCESS 0x%zx\n", address);
-}
 
-bool write_address(CoreState* core, uint64_t address, uint64_t size, void* data, bool physical) {
-    EmulatorContext* emulator = core->emulator;
-    
-    access_address(core, address, size);
+    uintptr_t phys_address;
+    if (physical || !PAGING_ENABLED()) {
+        phys_address = address;
+    } else {
+        const uintptr_t virt_address = address;
+        int flags;
+        uintptr_t rootPageTable = core->crpt;
 
-    if (!physical) {
-        if (PAGING_ENABLED()) {
-            printf("Paging not implemented at instruction fetch\n");
+        int offset = virt_address & 0xFFF;
+        if (core->mode == MODE_16) {
+            int index = (virt_address >> 12) & 0x3FF;
+            uint32_t entry;
+            mmu_operation(core, MMU_READ, rootPageTable + index * 4, 4, &entry, true);
+            
+            phys_address = entry & 0x3FF000; // 22-bit address space, lower 12 bits unused
+            phys_address += offset;
+            flags = entry & 0xFFF;
+
+            #define SET_CAUSE(ACCESS_FLAG) do { core->crfault = virt_address; core->crcause = ACCESS_FLAG; } while (0)
+
+            int mmuOpCause;
+            switch (operation) {
+                case MMU_READ: {
+                    mmuOpCause = CRCAUSE_READ;
+                } break;
+                case MMU_WRITE: {
+                    mmuOpCause = CRCAUSE_WRITE;
+                } break;
+                case MMU_READ_EXEC: {
+                    mmuOpCause = CRCAUSE_EXECUTE;
+                } break;
+            }
+
+            if (!(flags & PAGE_BIT_PRESENT)) {
+                SET_CAUSE(mmuOpCause);
+                emulator_trigger_exception(core, VECTOR_PAGE_FAULT);
+            }
+            mmuOpCause |= CRCAUSE_PRESENT;
+
+            if (USER_ENABLED() && !(flags & PAGE_BIT_USER)) {
+                SET_CAUSE(CRCAUSE_USER | mmuOpCause);
+                emulator_trigger_exception(core, VECTOR_PAGE_FAULT);
+            }
+
+            switch (operation) {
+                case MMU_READ: {
+                    if (!(flags & PAGE_BIT_READ)) {
+                        SET_CAUSE(mmuOpCause);
+                        emulator_trigger_exception(core, VECTOR_PAGE_FAULT);
+                    }
+                } break;
+                case MMU_WRITE: {
+                    if (!(flags & PAGE_BIT_WRITE)) {
+                        SET_CAUSE(mmuOpCause);
+                        emulator_trigger_exception(core, VECTOR_PAGE_FAULT);
+                    }
+                } break;
+                case MMU_READ_EXEC: {
+                    if (!(flags & PAGE_BIT_EXECUTE)) {
+                        SET_CAUSE(mmuOpCause);
+                        emulator_trigger_exception(core, VECTOR_PAGE_FAULT);
+                    }
+                } break;
+            }
+
+        } else {
+            // @TODO Implement paging for 32/64-bit. 32/64-bit hasn't been tested at all.
+            printf("Paging for 32/64-bit not implemented.\n");
             hard_fault(core);
-            return false;
         }
+
     }
 
     for (int i=0;i<emulator->platformConfig->devices_len;i++) {
         HardwareDevice* dev = emulator->platformConfig->devices[i];
-        if (dev->mmio_write) {
-            bool res = dev->mmio_write(emulator, dev, address, size, data);
-            if (res) {
-                return true;
-            }
+        switch (operation) {
+            case MMU_READ:
+            case MMU_READ_EXEC: {
+                if (dev->mmio_read) {
+                    bool res = dev->mmio_read(emulator, dev, address, size, data);
+                    if (res) {
+                        return;
+                    }
+                }
+            } break;
+            case MMU_WRITE: {
+                if (dev->mmio_write) {
+                    bool res = dev->mmio_write(emulator, dev, address, size, data);
+                    if (res) {
+                        return;
+                    }
+                }
+            } break;
         }
     }
 
-    // We must check both [address:address+size] because of integer overflow.
-    if (address > emulator->physicalMemory_size || address + size > emulator->physicalMemory_size) {
+    if (address > emulator->physicalMemory_size - size) {
         printf("BUS ERROR at 0x%zx, outside physical memory 0x%zx\n", address, emulator->physicalMemory_size);
         emulator_trigger_exception(core, VECTOR_BUS_ERROR);
-        return false;
+        return;
     }
-
-    switch (size) {
-        case 1: *(uint8_t*)&emulator->physicalMemory[address] = *(uint8_t*)data; break;
-        case 2: *(uint16_t*)&emulator->physicalMemory[address] = *(uint16_t*)data; break;
-        case 4: *(uint32_t*)&emulator->physicalMemory[address] = *(uint32_t*)data; break;
-        case 8: *(uint64_t*)&emulator->physicalMemory[address] = *(uint64_t*)data; break;
-        default: Assert(false);
-    }
-
-    return true;
-}
-
-
-bool read_address(CoreState* core, uint64_t address, uint64_t size, void* data, bool physical) {
-    EmulatorContext* emulator = core->emulator;
-    // @TODO Add write/read access to check
-
-    access_address(core, address, size);
-
-    if (!physical) {
-        if (PAGING_ENABLED()) {
-            printf("Paging not implemented at instruction fetch\n");
-            hard_fault(core);
-            return false;
-        }
-    }
-
-    for (int i=0;i<emulator->platformConfig->devices_len;i++) {
-        HardwareDevice* dev = emulator->platformConfig->devices[i];
-        if (dev->mmio_read) {
-            // printf("DEVR 0x%zx\n", address);
-            bool res = dev->mmio_read(emulator, dev, address, size, data);
-            if (res) {
-                return true;
+    switch (operation) {
+        case MMU_READ:
+        case MMU_READ_EXEC: {
+            switch (size) {
+                case 1: *(uint8_t*)data = *(uint8_t*)&emulator->physicalMemory[address]; break;
+                case 2: *(uint16_t*)data = *(uint16_t*)&emulator->physicalMemory[address]; break;
+                case 4: *(uint32_t*)data = *(uint32_t*)&emulator->physicalMemory[address]; break;
+                case 8: *(uint64_t*)data = *(uint64_t*)&emulator->physicalMemory[address]; break;
+                default: Assert(false);
             }
-        }
+        } break;
+        case MMU_WRITE: {
+            switch (size) {
+                case 1: *(uint8_t*)&emulator->physicalMemory[address] = *(uint8_t*)data; break;
+                case 2: *(uint16_t*)&emulator->physicalMemory[address] = *(uint16_t*)data; break;
+                case 4: *(uint32_t*)&emulator->physicalMemory[address] = *(uint32_t*)data; break;
+                case 8: *(uint64_t*)&emulator->physicalMemory[address] = *(uint64_t*)data; break;
+                default: Assert(false);
+            }
+        } break;
     }
-
-    if (address > emulator->physicalMemory_size || address + size > emulator->physicalMemory_size) {
-        printf("BUS ERROR at 0x%zx, outside physical memory 0x%zx\n", address, emulator->physicalMemory_size);
-        emulator_trigger_exception(core, VECTOR_BUS_ERROR);
-        return false;
-    }
-    
-    switch (size) {
-        case 1: *(uint8_t*)data = *(uint8_t*)&emulator->physicalMemory[address]; break;
-        case 2: *(uint16_t*)data = *(uint16_t*)&emulator->physicalMemory[address]; break;
-        case 4: *(uint32_t*)data = *(uint32_t*)&emulator->physicalMemory[address]; break;
-        case 8: *(uint64_t*)data = *(uint64_t*)&emulator->physicalMemory[address]; break;
-        default: Assert(false);
-    }
-
-    return true;
 }
+
 
 static inline uint8_t read_address8(CoreState* core, uint64_t address) {
     uint8_t value;
-    read_address(core, address, 1, &value, false);
+    mmu_operation(core, MMU_READ, address, 1, &value, false);
     return value;
 }
 static inline uint16_t read_address16(CoreState* core, uint64_t address) {
     uint16_t value;
-    read_address(core, address, 2, &value, false);
+    mmu_operation(core, MMU_READ, address, 2, &value, false);
     return value;
 }
 static inline uint32_t read_address32(CoreState* core, uint64_t address) {
     uint32_t value;
-    read_address(core, address, 4, &value, false);
+    mmu_operation(core, MMU_READ, address, 4, &value, false);
     return value;
 }
 static inline uint64_t read_address64(CoreState* core, uint64_t address) {
     uint64_t value;
-    read_address(core, address, 8, &value, false);
+    mmu_operation(core, MMU_READ, address, 8, &value, false);
+    return value;
+}
+static inline uint8_t read_exec_address8(CoreState* core, uint64_t address) {
+    uint8_t value;
+    mmu_operation(core, MMU_READ_EXEC, address, 1, &value, false);
+    return value;
+}
+static inline uint16_t read_exec_address16(CoreState* core, uint64_t address) {
+    uint16_t value;
+    mmu_operation(core, MMU_READ_EXEC, address, 2, &value, false);
+    return value;
+}
+static inline uint32_t read_exec_address32(CoreState* core, uint64_t address) {
+    uint32_t value;
+    mmu_operation(core, MMU_READ_EXEC, address, 4, &value, false);
+    return value;
+}
+static inline uint64_t read_exec_address64(CoreState* core, uint64_t address) {
+    uint64_t value;
+    mmu_operation(core, MMU_READ_EXEC, address, 8, &value, false);
     return value;
 }
 static inline void write_address8(CoreState* core, uint64_t address, uint8_t value) {
-    write_address(core, address, 1, &value, false);
+    mmu_operation(core, MMU_WRITE, address, 1, &value, false);
 }
 static inline void write_address16(CoreState* core, uint64_t address, uint16_t value) {
-    write_address(core, address, 2, &value, false);
+    mmu_operation(core, MMU_WRITE, address, 2, &value, false);
 }
 static inline void write_address32(CoreState* core, uint64_t address, uint32_t value) {
-    write_address(core, address, 4, &value, false);
+    mmu_operation(core, MMU_WRITE, address, 4, &value, false);
 }
 static inline void write_address64(CoreState* core, uint64_t address, uint64_t value) {
-    write_address(core, address, 8, &value, false);
+    mmu_operation(core, MMU_WRITE, address, 8, &value, false);
 }
 
 
@@ -484,6 +548,11 @@ void emulator_step(EmulatorContext* emulator, int coreIndex);
 void emulator_dump_state(EmulatorContext* emulator) {
     for (int i=0;i<emulator->platformConfig->core_count;i++) {
         CoreState* core = &emulator->cores[i];
+        if (core->tickCounter == 0) {
+            printf("CORE[%d] Not started\n", i);
+            continue;
+        }
+
         printf("CORE[%d]:\n", i);
         switch (core->mode) {
             case MODE_16: printf(" mode: 16-bit\n"); break;
@@ -524,10 +593,14 @@ void emulator_trigger_exception(CoreState* core, int vector) {
             hard_fault(core);
         }
         core->insideDoubleFault = true;
+        emulator_enter_vector(core, VECTOR_DOUBLE_FAULT);
     } else {
         core->insideFault = true;
+        emulator_enter_vector(core, vector);
     }
-    emulator_enter_vector(core, vector);
+    if (core->emulator->platformConfig->verbose) {
+        printf("EXCEPTION cpu=%d vector=%d\n", (int)core->crcpuid, vector);
+    }
     longjmp(core->loop_jmpbuf, 1);
 }
 
@@ -539,7 +612,7 @@ void emulator_enter_vector(CoreState* core, int vector) {
     // printf("EH addr=0x%zx crvb=0x%zx\n", eh_address, core->crvb);
 
     // @TODO If this fails then it's a triple fault.
-    read_address(core, eh_address, entrySize, &ex_handler, true);
+    mmu_operation(core, MMU_READ, eh_address, entrySize, &ex_handler, true);
 
     core->crepc = core->pc;
     core->cresp = core->sp;
@@ -565,6 +638,9 @@ void emulator_raise_vector(EmulatorContext* emulator, int cpuid, int vector) {
     if (vector < MAX_EXCEPTION_VECTORS || vector > MAX_VECTORS)
         return;
 
+    if (emulator->platformConfig->verbose) {
+        printf("RAISE cpu=%d vector=%d\n", cpuid, vector);
+    }
     CoreState* core = &emulator->cores[cpuid];
     ENABLE_PENDING_VECTOR(core->pendingVectors, vector);
 }
@@ -935,16 +1011,16 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
             if (opcode == OPCODE_PUSH) {
                 core->sp -= REGISTER_BYTESIZE();
                 switch (core->mode) {
-                    case MODE_16: WRITE16(core->sp, core->gprs[regs[0]]); break;
-                    case MODE_32: WRITE32(core->sp, core->gprs[regs[0]]); break;
-                    case MODE_64: WRITE64(core->sp, core->gprs[regs[0]]); break;
+                    case MODE_16: write_address16(core, core->sp, core->gprs[regs[0]]); break;
+                    case MODE_32: write_address32(core, core->sp, core->gprs[regs[0]]); break;
+                    case MODE_64: write_address64(core, core->sp, core->gprs[regs[0]]); break;
                 }
             }
             if (opcode == OPCODE_POP) {
                 switch (core->mode) {
-                    case MODE_16: core->gprs[regs[0]] = READ16(core->sp); break;
-                    case MODE_32: core->gprs[regs[0]] = READ32(core->sp); break;
-                    case MODE_64: core->gprs[regs[0]] = READ64(core->sp); break;
+                    case MODE_16: core->gprs[regs[0]] = read_address16(core, core->sp); break;
+                    case MODE_32: core->gprs[regs[0]] = read_address32(core, core->sp); break;
+                    case MODE_64: core->gprs[regs[0]] = read_address64(core, core->sp); break;
                 }
                 core->sp += REGISTER_BYTESIZE();
             }
@@ -1052,7 +1128,7 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
             } else {
                 next_pc = pc + bytes;
             }
-            LOG_INST("%s %d\n", opcode_to_string(opcode), result);
+            LOG_INST("%s %d %d\n", opcode_to_string(opcode), cond, result);
         } break;
         case OPCODE_LEA:
         case OPCODE_LDB:
@@ -1112,17 +1188,17 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
             
             switch (opcode) {
                 case OPCODE_LEA:  result = address; break;
-                case OPCODE_LDB:  result =          (uint8_t)READ8( address); break;
-                case OPCODE_LDBS: result =  (int64_t)(int8_t)READ8( address); break;
-                case OPCODE_LDH:  result =         (uint16_t)READ16(address); break;
-                case OPCODE_LDHS: result = (int64_t)(int16_t)READ16(address); break;
-                case OPCODE_LDL:  result =         (uint32_t)READ32(address); break;
-                case OPCODE_LDLS: result = (int64_t)(int32_t)READ32(address); break;
-                case OPCODE_LDQ:  result =         (uint64_t)READ64(address); break;
-                case OPCODE_STB:  WRITE8( address,  (uint8_t)value); break;
-                case OPCODE_STH:  WRITE16(address, (uint16_t)value); break;
-                case OPCODE_STL:  WRITE32(address, (uint32_t)value); break;
-                case OPCODE_STQ:  WRITE64(address, (uint64_t)value); break;
+                case OPCODE_LDB:  result =          (uint8_t)read_address8(core, address); break;
+                case OPCODE_LDBS: result =  (int64_t)(int8_t)read_address8(core, address); break;
+                case OPCODE_LDH:  result =         (uint16_t)read_address16(core, address); break;
+                case OPCODE_LDHS: result = (int64_t)(int16_t)read_address16(core, address); break;
+                case OPCODE_LDL:  result =         (uint32_t)read_address32(core, address); break;
+                case OPCODE_LDLS: result = (int64_t)(int32_t)read_address32(core, address); break;
+                case OPCODE_LDQ:  result =         (uint64_t)read_address64(core, address); break;
+                case OPCODE_STB:  write_address8(core, address,  (uint8_t)value); break;
+                case OPCODE_STH:  write_address16(core, address, (uint16_t)value); break;
+                case OPCODE_STL:  write_address32(core, address, (uint32_t)value); break;
+                case OPCODE_STQ:  write_address64(core, address, (uint64_t)value); break;
             }
 
             next_pc = pc + bytes;
@@ -1252,27 +1328,52 @@ void dump(PlatformConfig* config) {
     uint8_t* rom = config->rom;
 
     printf("Core entry: %zu\n", config->core_entry);
+    printf("Core count: %d\n", (int)config->core_count);
+    printf("Core mode: ");
+    switch (config->core_mode) {
+        case MODE_16: printf(" 16-bit\n"); break;
+        case MODE_32: printf(" 32-bit\n"); break;
+        case MODE_64: printf(" 64-bit\n"); break;
+        default:      printf(" %d\n", config->core_mode); break;
+    }
 
     int stride = 4;
     
     printf("ROM %d bytes (0x%x)\n", config->rom_len, config->rom_len);
-    int i = 0;
-    for(;i<config->rom_len;i++) {
 
-        if (i % stride == 0) {
-            printf(" 0x%x: ", i);
+    bool skipping = false;
+    for (int row = 0; row < config->rom_len; row += stride) {
+
+        bool all_zero = true;
+        int end = row + stride;
+        if (end > config->rom_len)
+            end = config->rom_len;
+
+        for (int i = row; i < end; i++) {
+            if (rom[i] != 0) {
+                all_zero = false;
+                break;
+            }
         }
 
-        char c0 = tohex((rom[i]>>0)&0xF);
-        char c1 = tohex((rom[i]>>4)&0xF);
-        printf("%c%c ", c1, c0);
-        
-        if ((i+1) % stride == 0) {
-            printf("\n");
+        if (all_zero) {
+            if (!skipping) {
+                printf("  ...\n");
+                skipping = true;
+            }
+            continue;
         }
-    }
-    if ((i) % stride != 0) {
+
+        skipping = false;
+
+        printf(" 0x%x: ", row);
+
+        for (int i = row; i < end; i++) {
+            printf("%02X ", rom[i]);
+        }
+
         printf("\n");
     }
+
 }
 

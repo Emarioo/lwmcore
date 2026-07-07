@@ -529,7 +529,8 @@ void emit_jcond8(Builder* builder, ConditionKind kind, int reg0, int reg1, uint6
     int relsize = 0;
     uint8_t bytes[] = {
         OPCODE_JCOND,
-        relsize | (kind << 2) | ((reg0 << 6) & 3), (reg0 >> 2) | (reg1 << 3),
+        relsize | (kind << 2) | ((reg0&3) << 6),
+        (reg0 >> 2) | (reg1 << 3),
         0,
     };
     APPEND_BYTES(bytes)
@@ -539,7 +540,8 @@ void emit_jcond16(Builder* builder, ConditionKind kind, int reg0, int reg1, uint
     int relsize = 1;
     uint8_t bytes[] = {
         OPCODE_JCOND,
-        relsize | (kind << 2) | ((reg0 << 6) & 3), (reg0 >> 2) | (reg1 << 3),
+        relsize | (kind << 2) | ((reg0&3) << 6),
+        (reg0 >> 2) | (reg1 << 3),
         0, 0
     };
     APPEND_BYTES(bytes)
@@ -549,7 +551,8 @@ void emit_jcond32(Builder* builder, ConditionKind kind, int reg0, int reg1, uint
     int relsize = 2;
     uint8_t bytes[] = {
         OPCODE_JCOND,
-        relsize | (kind << 2) | ((reg0 << 6) & 3), (reg0 >> 2) | (reg1 << 3),
+        relsize | (kind << 2) | ((reg0&3) << 6),
+        (reg0 >> 2) | (reg1 << 3),
         0, 0, 0, 0
     };
     APPEND_BYTES(bytes)
