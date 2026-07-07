@@ -60,6 +60,9 @@ instruction wfi RARE
 instruction nop
 instruction vmstart RARE
 
+instruction save    reg imm8 RARE
+instruction restore reg imm8 RARE
+
 instruction jz8   reg imm8 COMMON
 instruction jz16  reg imm16 COMMON
 instruction jz32  reg imm32

@@ -75,6 +75,8 @@ void emit_wfi(Builder* builder);
 void emit_nop(Builder* builder);
 void emit_vmstart(Builder* builder);
 
+void emit_save(Builder* builder, int reg0, uint8_t imm8);
+void emit_restore(Builder* builder, int reg0, uint8_t imm8);
 
 typedef enum {
     MEMOP_LEA,

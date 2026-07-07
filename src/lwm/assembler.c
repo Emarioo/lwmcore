@@ -764,6 +764,8 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
         else CASE_OPCODE2("stq", OPCODE_STQ, MEMOP_STQ) 
         else CASE_OPCODE("push", OPCODE_PUSH) 
         else CASE_OPCODE("pop", OPCODE_POP) 
+        else CASE_OPCODE("save", OPCODE_SAVE) 
+        else CASE_OPCODE("restore", OPCODE_RESTORE)
         else CASE_OPCODE("tlbflush", OPCODE_TLBFLUSH) 
         else CASE_OPCODE("rdtick", OPCODE_RDTICK)
         else {
@@ -923,8 +925,12 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
             #define EMIT_REG1(op) \
                 emit_##op(builder, inst->operands[0].regnum)
 
-            switch (inst->opcode) {
-                case OPCODE_LI8: {
+            switch ((OpcodeKind)inst->opcode) {
+                case OPCODE_LI8:
+                case OPCODE_LI16:
+                case OPCODE_LI32:
+                case OPCODE_LI64:
+                 {
                     if (inst->operands[1].immediate >> 63) {
                         // Signed
                         int64_t imm = inst->operands[1].immediate;
@@ -950,7 +956,15 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                         }
                     }
                 } break;
-                case OPCODE_CALL: {
+                case OPCODE_CALL_REG: {
+                    emit_call_reg(builder, inst->operands[0].regnum);
+                } break;
+                case OPCODE_JMP_REG: {
+                    emit_call_reg(builder, inst->operands[0].regnum);
+                } break;
+                case OPCODE_CALL:
+                case OPCODE_CALL1:
+                case OPCODE_CALL2: {
                     Operand* labelOperand = &inst->operands[0];
                     if (!labelOperand->label.len) {
                         ERROR_SRC_RET(inst->parseHead, "Immediate or register is not allowed.\n");
@@ -964,7 +978,9 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                         emit_call32(builder, &fixup->rom_offset);
                     }
                 } break;
-                case OPCODE_JMP: {
+                case OPCODE_JMP:
+                case OPCODE_JMP1:
+                case OPCODE_JMP2: {
                     Operand* labelOperand = &inst->operands[0];
                     if (!labelOperand->label.len) {
                         ERROR_SRC_RET(inst->parseHead, "Immediate or register is not allowed.\n");
@@ -1120,7 +1136,13 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                 } break;
                 case OPCODE_TLBFLUSH: { EMIT_REG1(tlbflush);
                 } break;
-                case OPCODE_RDTICK: {
+                case OPCODE_SAVE: {       emit_save(builder, inst->operands[0].regnum, inst->operands[1].immediate);
+                } break;
+                case OPCODE_RESTORE: {    emit_restore(builder, inst->operands[0].regnum, inst->operands[1].immediate);
+                } break;
+                case OPCODE_RDTICK:
+                case OPCODE_RDTICK1:
+                case OPCODE_RDTICK2: {
                     if (inst->operands_len == 1) {
                         emit_rdtick(builder, inst->operands[0].regnum);
                     } else if (inst->operands_len == 2) {
@@ -1131,6 +1153,20 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                         Assert(false);
                     }
                 } break;
+            } // switch opcode
+        }
+        // Update last addresses
+        while (checkLabelIndex < section->labels_len) {
+            Label* label = &section->labels[checkLabelIndex];
+            if (label->object_id != section->objects_len) {
+                // printf("Not %s %d %d\n", label->name.ptr, label->object_id, section->objects_len);
+                Assert(label->object_id == section->objects_len);
+            }
+            
+            label->final_address = builder_head(builder);
+            checkLabelIndex++;
+            if (options->verbose) {
+                printf("Update label %s 0x%zx obj=%d secaddr=0x%zx\n", label->name.ptr, label->final_address, label->object_id, section->addr);
             }
         }
         

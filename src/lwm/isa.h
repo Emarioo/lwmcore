@@ -140,7 +140,9 @@ typedef enum {
     OPCODE_STL,
     OPCODE_STQ,
 
-    
+    // [ opcode 8 | reg 5 | immediate8 ]
+    OPCODE_SAVE,
+    OPCODE_RESTORE,
 
     // Special instructions
     OPCODE_RDTICK,

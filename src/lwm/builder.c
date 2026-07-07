@@ -123,6 +123,22 @@ void emit_tlbflush(Builder* builder, int reg0) {
     EMIT_REG1(OPCODE_TLBFLUSH);
 }
 
+void emit_save(Builder* builder, int reg0, uint8_t imm8) {
+    uint8_t bytes[] = {
+        OPCODE_SAVE,
+        reg0,
+        imm8,
+    };
+    APPEND_BYTES(bytes);
+}
+void emit_restore(Builder* builder, int reg0, uint8_t imm8) {
+    uint8_t bytes[] = {
+        OPCODE_RESTORE,
+        reg0,
+        imm8,
+    };
+    APPEND_BYTES(bytes);
+}
 void emit_rdtick(Builder* builder, int reg0) {
     EMIT_REG1(OPCODE_RDTICK);
 }

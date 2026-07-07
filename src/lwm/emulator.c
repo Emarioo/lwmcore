@@ -632,11 +632,15 @@ void emulator_enter_vector(CoreState* core, int vector) {
     (core->pendingVectors[VECTOR/BITS_PER_PENDING_VECTOR_INDEX] &= ~((uint64_t)1 << (VECTOR%BITS_PER_PENDING_VECTOR_INDEX)))
 
 void emulator_raise_vector(EmulatorContext* emulator, int cpuid, int vector) {
-    if (cpuid < 0 || cpuid >= emulator->platformConfig->core_count)
+    if (cpuid < 0 || cpuid >= emulator->platformConfig->core_count) {
+        printf("WARNING: emulator_raise_vector, cpuid %d does not exist!\n", cpuid);
         return;
+    }
 
-    if (vector < MAX_EXCEPTION_VECTORS || vector > MAX_VECTORS)
+    if (vector < MAX_EXCEPTION_VECTORS || vector > MAX_VECTORS) {
+        printf("WARNING: emulator_raise_vector, low vectors 0-31 (%d) are not allowed! Function is intended for interrupts.\n", vector);
         return;
+    }
 
     if (emulator->platformConfig->verbose) {
         printf("RAISE cpu=%d vector=%d\n", cpuid, vector);
@@ -1028,6 +1032,43 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
             next_pc = pc + bytes;
             LOG_INST("%s\n", opcode_to_string(opcode));
         } break;
+        case OPCODE_SAVE:
+        case OPCODE_RESTORE:
+        {
+            check_privilege(core);
+
+            bytes = decode_form_reg1_imm(core, pc, opcode, NULL, regs, &immediate);
+            check_registers(core, regs, 1);
+
+            int regCount = core->mode == MODE_16 ? 16 : 32;
+            int regSize  = REGISTER_BYTESIZE();
+            uintptr_t address = core->gprs[regs[0]];
+
+            // @TODO Immediate tells us which registers to save. For now we just always same GPRS.
+            //   We don't have floating point and control registers needs special care when saving/restoring.
+
+            for (int i=0;i<regCount;i++) {
+                if (opcode == OPCODE_SAVE) {
+                    if (i == regs[0])
+                        continue;
+                    if (i == LWM_REGNR_SP) {
+                        mmu_operation(core, MMU_WRITE, address + i*regSize, regSize, &core->crs[LWM_REGNR_CRESP], false);
+                    } else {
+                        mmu_operation(core, MMU_WRITE, address + i*regSize, regSize, &core->gprs[i], false);
+                    }
+                } else {
+                    if (i == LWM_REGNR_SP) {
+                        mmu_operation(core, MMU_READ, address + i*regSize, regSize, &core->crs[LWM_REGNR_CRESP], false);
+                    } else {
+                        mmu_operation(core, MMU_READ, address + i*regSize, regSize, &core->gprs[i], false);
+                    }
+                }
+            }
+
+            next_pc = pc + bytes;
+
+            LOG_INST("%s r%d, 0x%zx\n", opcode_to_string(opcode), regs[0], immediate);
+        } break;
         case OPCODE_RDTICK:
         case OPCODE_RDTICK1:
         case OPCODE_RDTICK2:
@@ -1212,14 +1253,21 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
         } break;
         case OPCODE_SYSCALL:
         {
-            pc = pc + 1; // We must set PC in here since trigger exception
-                         // moves it to CREPC
+            core->pc = pc + 1; // We must set PC in here since trigger exception
+                               // moves it to CREPC
             LOG_INST("%s\n", opcode_to_string(opcode));
             emulator_trigger_exception(core, VECTOR_SYSCALL);
         } break;
         case OPCODE_VRET:
         {
             check_privilege(core);
+
+            // When entering user mode, paging and interrupts must be enabled
+            if ((core->crestatus & CRSTATUS_USER) && (
+                !(core->crestatus & CRSTATUS_PAGING) || !(core->crestatus & CRSTATUS_INTERRUPT)))
+            {
+                emulator_trigger_exception(core, VECTOR_PROTECTION_FAULT);
+            }
 
             next_pc = core->crepc;
             core->sp = core->cresp;

@@ -9,27 +9,30 @@ section .text 0x0
 init_msg:
     byte[] "core0\n\0"
 
-mapped_msg:
-    byte[] "mapped\n\0"
     
 
 align 4
 vector:
     long[12] ex_handler, ex_handler, ex_handler, ex_handler, ex_handler, ex_handler, ex_handler, ex_handler, ex_handler, ex_handler, ex_handler,  ex_handler
 
-section .data 0x80
-
 main:
     li sp, 0x1000
+    mtcr CRISP, sp
 
     lea r0, [vector]
     mtcr CRVB, r0
 
+    lea r0, [ex_handler_prot_fault]
+    sth r0, [vector + 8]
+
     lea r0, [ex_handler_page_fault]
     sth r0, [vector + 12]
-    
+
     lea r0, [ex_handler_double_fault]
     sth r0, [vector + 16]
+    
+    lea r0, [ex_handler_syscall]
+    sth r0, [vector + 24]
 
     lea r0, [init_msg]
     call putstring
@@ -37,7 +40,12 @@ main:
     lea r0, [rootTable]
     mtcr CRPT, r0
 
-    li r0, 0x0
+
+    /*
+        Try not setting user bit for kernel pages which contain putstring, it should cause page fault user.
+    */
+
+li r0, 0x0
     li r1, 0x1F
     li r2, 0x0
     call map_page
@@ -52,16 +60,18 @@ main:
     li r2, 0x2
     call map_page
     
-    li r0, 0x3
-    li r1, 0x11 // present, exec, no read, no write
-    li r2, 0x3
+    li r0, 0x7
+    li r1, 0x1F
+    li r2, 0x7
     call map_page
-
-    /*
+    
     li r0, 0xF
     li r1, 0x1F
     li r2, 0xF
     call map_page
+
+    /*
+        Try entering user mode with paging and interrupts disabled, it should case protection fault
     */
 
     mfcr r0, CRSTATUS
@@ -69,10 +79,20 @@ main:
     or r0, r0, r1
     mtcr CRSTATUS, r0
 
-    call far_func
+    li r0, 0x2
+    li r1, 0x8
+    or r0, r0, r1
+    li r1, 0x4
+    or r0, r0, r1
+    mtcr CRESTATUS, r0
 
-    lea r0, [mapped_msg]
-    call putstring
+    lea r0, [user_stack]
+    mtcr CRESP, r0
+
+    lea r0, [user_code]
+    mtcr CREPC, user_code
+
+    vret
 
     hlt
 
@@ -120,7 +140,7 @@ putstring:
 
 
 page_fault_msg:
-    byte[] "page fault \0"
+    byte[] "Page Fault, \0"
 write_msg:
     byte[] "write\n\0"
 user_msg:
@@ -132,16 +152,10 @@ exec_msg:
 present_msg:
     byte[] "present\n\0"
 
-ex_handler_page_fault:
-    mfcr sp, CRESP
-    
-    // Comment this out to get a double fault
-    // Map uart/log
-    li r0, 0xF
-    li r1, 0x1F
-    li r2, 0xF
-    call map_page
 
+ex_handler_page_fault:
+    li r0, 0
+    mtcr CRSTATUS, r0 // turn off paging and interrupts
     lea r0, [page_fault_msg]
     call putstring
 
@@ -194,26 +208,100 @@ default_ex_msg:
     byte[] "Generic Fault\n\0"
 
 ex_handler:
-    mfcr sp, CRESP
     li r0, 0
     mtcr CRSTATUS, r0 // turn off paging and interrupts
     lea r0, [default_ex_msg]
     call putstring
     hlt
     
+prot_ex_msg:
+    byte[] "Protection Fault\n\0"
+
+ex_handler_prot_fault:
+    li r0, 0
+    mtcr CRSTATUS, r0 // turn off paging and interrupts
+    lea r0, [prot_ex_msg]
+    call putstring
+    hlt
+
 double_ex_msg:
     byte[] "Double Fault\n\0"
 
 ex_handler_double_fault:
-    mfcr sp, CRESP
     li r0, 0
     mtcr CRSTATUS, r0 // turn off paging and interrupts
     lea r0, [double_ex_msg]
     call putstring
     hlt
 
-section .far 0x3000
-far_func:
-    // read only allowed -> page fault
-    ldb r0, [far_func]
-    wfi
+syscall_msg:
+    byte[] "syscall \0"
+
+save_context:
+    short[32]
+
+ex_handler_syscall:
+    sth r0, [save_context]
+    lea r0, [save_context]
+    save r0, 0
+
+    lea r0, [syscall_msg]
+    call putstring
+
+    li r0, '0'
+    ldb r1, [save_context]
+    add r0, r0, r1
+    call putchar
+    
+    li r0, ' '
+    call putchar
+    
+    li r0, '0'
+    ldb r1, [save_context + 2]
+    add r0, r0, r1
+    call putchar
+    
+    li r0, ' '
+    call putchar
+    
+    li r0, '0'
+    ldb r1, [save_context + 4]
+    add r0, r0, r1
+    call putchar
+    
+    li r0, '\n'
+    call putchar
+
+    lea r0, [save_context]
+    restore r0, 0
+
+    vret
+
+section .user 0x7000
+
+user_enter_msg:
+    byte[] "User code\n\0"
+
+
+user_code:
+
+    lea r0, [user_enter_msg]
+    call putstring
+
+    // These syscalls show that we save context properly
+    li r0, 3
+    li r1, 5
+    li r2, 7
+    syscall
+    
+    add r2, r0, r1
+    syscall
+
+    li r0, 0
+    mtcr CRSTATUS, r0 // protection fault on privileged instruction
+
+    hlt
+
+    byte[64]
+user_stack:
+

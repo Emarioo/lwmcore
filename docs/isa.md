@@ -123,7 +123,8 @@ Bytes at the program counter cannot be decoded into a valid instruction.
 
 ### Protection Fault
 
-User tried to execute a privileged instruction.
+User tried to execute a privileged instruction. Or wrong bits are set in control registers when switching to user.
+Or you set the user bit in CRSTATUS directly which is not allowed. Must be done indirectly with `CRESTATUS` and `vret`.
 
 - `CREPC` holds the program counter to the instruction that caused the fault.
 
@@ -308,6 +309,14 @@ setupKeyboard:
 
 ```
 
+# User and supervisor mode
+
+The CPU starts in supervisor mode and can switch to user mode by setting control registers and executing `vret`.
+Execution in user mode is restricted to normal instructions and only pages marked user can be accessed. Executing privileged instructions such as `vret` and `mfcr` will cause a **Protection Fault**.
+
+Switching to user mode with paging or interrupts disabled will cause **Protection Fault**. Otherwise user mode can never be interrupted or can access all physical memory.
+
+Use `save` and `restore` instructions to save general purpose registers. Useful when context switching.
 
 
 # Tick Counter and Timer

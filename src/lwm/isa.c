@@ -121,6 +121,8 @@ int largest_encoding_ext(int opcode, AddressingForm form, int* lowestBytes) {
                 case ADDRESSING_PC_DISP16:      return 4;
                 case ADDRESSING_PC_DISP32:      if (lowestBytes) *lowestBytes = 3; return 6;
             }
+        case OPCODE_SAVE:
+        case OPCODE_RESTORE: return 3;
         case OPCODE_RDTICK: return 2;
         case OPCODE_RDTICK1: return 3;
         case OPCODE_RDTICK2: return 5;
@@ -191,6 +193,8 @@ const char* opcode_to_string(int opcode) {
         CASE(OPCODE_STH, "sth")
         CASE(OPCODE_STL, "stl")
         CASE(OPCODE_STQ, "stq")
+        CASE(OPCODE_SAVE, "save")
+        CASE(OPCODE_RESTORE, "restore")
         CASE(OPCODE_RDTICK, "rdtick")
         CASE(OPCODE_RDTICK1, "rdtick1")
         CASE(OPCODE_RDTICK2, "rdtick2")

@@ -85,14 +85,18 @@ Core state:
 - [x] Assembler only handles labels for call. Do same for jump and conditional jumps.
 - [x] Read tick and timer.
 - [x] Exception vector and illegal operations jumping to it.
-- [X] Interface for firmware and hardware devices. Disk device?
+- [X] Interface for firmware and hardware devices (*HardwareDevice* MMIO, UART, IC, EMU).
 - [x] Interrupts. Needs redesign to handle multiple cores.
 - [x] Multiple cores.
+- [x] Page tables
+- [x] User mode, syscall.
+- [ ] Atomic instructions.
 - [ ] Include directive in assembler. Put MMIO definitions in a file where programs can include them so i don't have to update them everywhere.
 - [ ] Operand checks in assembler. Using immediate where only register is allowed for example.
 - [ ] Make a test suite with some basic programs. Prime numbers, bubble sort, extensive instruction testing. Testing should be done for 16/32/64 don't forget that!
-- [ ] Page tables.
-- [ ] User mode, syscall.
+- [ ] Test 32-bit and 64-bit mode.
+- [ ] Display device. (uart for keyboard input)
+- [ ] Disk device
 - [ ] Implement decoder in logic world.
 
 # Documents
