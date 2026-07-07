@@ -110,6 +110,8 @@ struct EmulatorContext {
     uint8_t* physicalMemory;
     uint64_t physicalMemory_size;
 
+    uint32_t randomState;
+
     CoreState* cores;
 };
 

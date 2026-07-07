@@ -684,6 +684,15 @@ void emulator_reset_core(EmulatorContext* emulator, int cpuid) {
     core->running = false;
 }
 
+// state is the seed
+uint32_t rand32(uint32_t* inout_state) {
+    uint32_t state = *inout_state;
+    *inout_state = state * 747796405u + 2891336453u;
+    state = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return (state >> 22u) ^ state;
+}
+
+
 void emulator_start(PlatformConfig* config) {
 
     EmulatorContext _ctx = {0};
@@ -716,8 +725,12 @@ void emulator_start(PlatformConfig* config) {
 
     int currentCoreIndex = 0;
     int executedInstructions = 0;
+    
+    emulator->randomState = 0xA19F0B25;
 
     #define INSTRUCTIONS_PER_CORE_TIME_SLICE 5
+
+    int nextInstructionSlice = 5;
 
     while (true) {
         CoreState* core = &emulator->cores[currentCoreIndex];
@@ -732,9 +745,12 @@ void emulator_start(PlatformConfig* config) {
         }
 
         if (emulator->platformConfig->core_count > 1) {
-            while (!core->running || executedInstructions > INSTRUCTIONS_PER_CORE_TIME_SLICE) {
+            while (!core->running || executedInstructions > nextInstructionSlice) {
                 currentCoreIndex = (currentCoreIndex + 1) % emulator->platformConfig->core_count;
                 core = &emulator->cores[currentCoreIndex];
+                if (executedInstructions != 0) {
+                    nextInstructionSlice = 1 + rand32(&emulator->randomState) % 17;
+                }
                 executedInstructions = 0;
             }
             executedInstructions++;
@@ -773,11 +789,8 @@ void emulator_start(PlatformConfig* config) {
         }
 
         int jmpResult = setjmp(core->loop_jmpbuf);
-
         if (jmpResult == 0) {
-            
             emulator_step(emulator, currentCoreIndex);
-
         } else {
             // Exception/fault
             continue;

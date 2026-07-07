@@ -232,7 +232,7 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
         }
 
         if(data_bytes) {
-            parse_space(context, &head);
+            parse_space_not_newline(context, &head);
 
 
             bool dynamic_length = false;
