@@ -122,8 +122,6 @@ ex_handler_uart_rx:
     call putchar
     jmp has_data
   no_data:
-  
-    call ic_eoi
 
     #RESTORE
     vret
@@ -217,8 +215,7 @@ uart_read8:
     ldb r0, [#UART_DATA]
     ret
 
-#define IC_EOI                0xE000
-#define IC_IRQ_BASE           0xE004
+#define IC_IRQ_BASE           0xE010
 #define IC_IRQ_OFFSET_VECTOR  0x0
 #define IC_IRQ_OFFSET_CPU     0x1
 #define IC_IRQ_OFFSET_FLAGS   0x2
@@ -245,9 +242,4 @@ ic_map_irq:
     or r3, r3, r4
     sth r3, [r0 + #IC_IRQ_OFFSET_FLAGS]
 
-    ret
-
-ic_eoi:
-    li r0, 0
-    stb r0, [#IC_EOI]
     ret

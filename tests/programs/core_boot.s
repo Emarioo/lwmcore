@@ -46,6 +46,7 @@ inf:
     hlt
 
 core_entry:
+    li sp, 0x1100
 
     lea r0, [core_msg]
     call putstring

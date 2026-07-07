@@ -7,6 +7,8 @@
 #include <stdbool.h>
 #include <setjmp.h>
 
+#include "lwm/isa.h"
+
 typedef struct EmulatorContext EmulatorContext;
 
 
@@ -56,9 +58,10 @@ typedef struct {
     bool insideFault;
     bool insideDoubleFault;
     
-    // Only interrupt controller can modify these
-    const bool interruptLine;
-    const int  vectorIndex;
+    // First 32 bits are unused because interrupt controller is not
+    // allowed to send interrupts to exception handler vectors like page fault.
+    // Ignored if you do i guess?
+    uint32_t pendingVectors[MAX_VECTORS/32];
 
     uint64_t tickCounter;
 
@@ -83,7 +86,7 @@ struct HardwareDevice {
     FN_tick            tick;
     FN_mmio_read       mmio_read;
     FN_mmio_write      mmio_write;
-    FN_queue_interrupt queue_interrupt;
+    FN_queue_interrupt queue_interrupt; // Only for interrupt controllers
 };
 
 typedef struct {
@@ -108,13 +111,11 @@ struct EmulatorContext {
     uint64_t physicalMemory_size;
 
     CoreState* cores;
-
-    // bool running;
-    // jmp_buf loop_jmpbuf;
 };
 
 
 void emulator_request_interrupt(EmulatorContext* emulator, int irq_number);
+void emulator_raise_vector(EmulatorContext* emulator, int cpuid, int vector);
 
 void emulator_boot_core(EmulatorContext* emulator, int cpuid, uintptr_t entry);
 void emulator_reset_core(EmulatorContext* emulator, int cpuid);

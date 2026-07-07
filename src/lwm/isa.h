@@ -56,6 +56,8 @@ typedef enum {
 #define VECTOR_BUS_ERROR            10
 #define VECTOR_FATAL_MACHINE_ERROR  11
 
+#define MAX_EXCEPTION_VECTORS 32
+#define MAX_VECTORS 64
 
 // Instruction opcode numbers. Not strictly related to encoding
 typedef enum {

@@ -34,7 +34,9 @@
 #define REGISTER_BYTESIZE() (2 << core->mode)
 
 void hard_fault(CoreState* core) {
-    core->running = false;
+    for (int i=0;i<core->emulator->platformConfig->core_count;i++) {
+        core->emulator->cores[i].running = false;
+    }
     longjmp(core->loop_jmpbuf, 1);
 }
 
@@ -518,7 +520,7 @@ void emulator_dump_state(EmulatorContext* emulator) {
 void emulator_trigger_exception(CoreState* core, int vector) {
     if (core->insideFault) {
         if (core->insideDoubleFault) {
-            printf("DOUBLE FAULT at 0x%zx\n", core->pc);
+            printf("TRIPPLE FAULT at 0x%zx\n", core->pc);
             hard_fault(core);
         }
         core->insideDoubleFault = true;
@@ -548,6 +550,24 @@ void emulator_enter_vector(CoreState* core, int vector) {
     core->crstatus &= ~(CRSTATUS_USER|CRSTATUS_INTERRUPT);
 }
 
+#define BITS_PER_PENDING_VECTOR_INDEX (8*sizeof(*core->pendingVectors))
+#define GET_PENDING_VECTOR(ARR, VECTOR) \
+    ((core->pendingVectors[VECTOR/BITS_PER_PENDING_VECTOR_INDEX] >> (VECTOR%BITS_PER_PENDING_VECTOR_INDEX)) & 1)
+#define ENABLE_PENDING_VECTOR(ARR, VECTOR) \
+    (core->pendingVectors[VECTOR/BITS_PER_PENDING_VECTOR_INDEX] |= (uint64_t)1 << (VECTOR%BITS_PER_PENDING_VECTOR_INDEX))
+#define DISABLE_PENDING_VECTOR(ARR, VECTOR) \
+    (core->pendingVectors[VECTOR/BITS_PER_PENDING_VECTOR_INDEX] &= ~((uint64_t)1 << (VECTOR%BITS_PER_PENDING_VECTOR_INDEX)))
+
+void emulator_raise_vector(EmulatorContext* emulator, int cpuid, int vector) {
+    if (cpuid < 0 || cpuid >= emulator->platformConfig->core_count)
+        return;
+
+    if (vector < MAX_EXCEPTION_VECTORS || vector > MAX_VECTORS)
+        return;
+
+    CoreState* core = &emulator->cores[cpuid];
+    ENABLE_PENDING_VECTOR(core->pendingVectors, vector);
+}
 
 void emulator_request_interrupt(EmulatorContext* emulator, int irq_number) {
     for (int i=0;i<emulator->platformConfig->devices_len;i++) {
@@ -622,27 +642,21 @@ void emulator_start(PlatformConfig* config) {
     while (true) {
         CoreState* core = &emulator->cores[currentCoreIndex];
 
-        // This detects if all cores are inactive.
-        // It detects when a core should be yielded so others can run.
-        // @TODO Can it be simplified?
-        bool quitEmulator = false;
-        bool yieldCore = executedInstructions > INSTRUCTIONS_PER_CORE_TIME_SLICE;
-        int nextCoreIndex = currentCoreIndex;
-        while (!core->running || (yieldCore && executedInstructions != 0)) {
-            nextCoreIndex = (nextCoreIndex + 1) % emulator->platformConfig->core_count;
-            if (nextCoreIndex == currentCoreIndex && !yieldCore) {
-                quitEmulator = true;
+        int inactiveCores = 0;
+        for (inactiveCores=0;inactiveCores<config->core_count;inactiveCores++) {
+            if (emulator->cores[inactiveCores].running)
                 break;
-            }
-            core = &emulator->cores[nextCoreIndex];
-            executedInstructions = 0;
         }
-        if (quitEmulator) {
+        if (inactiveCores == config->core_count) {
             break;
         }
-        currentCoreIndex = nextCoreIndex;
 
         if (emulator->platformConfig->core_count > 1) {
+            while (!core->running || executedInstructions > INSTRUCTIONS_PER_CORE_TIME_SLICE) {
+                currentCoreIndex = (currentCoreIndex + 1) % emulator->platformConfig->core_count;
+                core = &emulator->cores[currentCoreIndex];
+                executedInstructions = 0;
+            }
             executedInstructions++;
         }
 
@@ -654,17 +668,27 @@ void emulator_start(PlatformConfig* config) {
                 device->tick(emulator, device);
             }
         }
+        if (core->tickCounter == core->crtimercmp) {
+            ENABLE_PENDING_VECTOR(core->pendingVectors, VECTOR_TIMER_INTERRUPT);
+        }
 
-        bool canHandleInterrupt = !core->insideFault && !core->insideDoubleFault && (core->crstatus & CRSTATUS_INTERRUPT);
-
+        bool canHandleInterrupt = (core->crstatus & CRSTATUS_INTERRUPT);
         if (canHandleInterrupt) {
-            if (core->tickCounter == core->crtimercmp) {
-                printf("TIMER INTERRUPT at 0x%zx tc=%zu\n", core->pc, core->tickCounter);
-                emulator_enter_vector(core, VECTOR_TIMER_INTERRUPT);
-
-            } else if (core->interruptLine) {
-                printf("INTERRUPT at 0x%zx vector=%d\n", core->pc, core->vectorIndex);
-                emulator_enter_vector(core, core->vectorIndex);
+            for (int vi=0;vi<MAX_VECTORS;vi++) {
+                int pending = GET_PENDING_VECTOR(core->pendingVectors, vi);
+                if (pending) {
+                    if (vi == VECTOR_TIMER_INTERRUPT) {
+                        if (config->verbose) {
+                            printf("TIMER INTERRUPT at 0x%zx tc=%zu\n", core->pc, core->tickCounter);
+                        }
+                    } else {
+                        if (config->verbose) {
+                            printf("INTERRUPT at 0x%zx vector=%d\n", core->pc, vi);
+                        }
+                    }
+                    emulator_enter_vector(core, vi);
+                    DISABLE_PENDING_VECTOR(core->pendingVectors, vi);
+                }
             }
         }
 

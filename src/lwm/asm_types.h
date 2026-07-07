@@ -11,9 +11,9 @@
 typedef struct {
     string name;
     int object_id;
-    int final_address;
-    int estimated_addressLow;
-    int estimated_addressHigh;
+    uintptr_t final_address;
+    uintptr_t estimated_addressLow;
+    uintptr_t estimated_addressHigh;
 } Label;
 
 typedef struct {
@@ -36,8 +36,16 @@ typedef struct {
 } Instruction;
 
 typedef struct {
-    u8* bytes;
-    int size;
+    uint32_t offset; // relative to data object
+    string   label;
+} LabelValue;
+
+typedef struct {
+    u8*         bytes;
+    int         size;
+    uint16_t    elementSize;
+    uint16_t    labels_len;
+    LabelValue* labels;
 } DataObject;
 
 #define OBJECT_INSTRUCTION 0

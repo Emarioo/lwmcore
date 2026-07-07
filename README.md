@@ -86,12 +86,13 @@ Core state:
 - [x] Read tick and timer.
 - [x] Exception vector and illegal operations jumping to it.
 - [X] Interface for firmware and hardware devices. Disk device?
+- [x] Interrupts. Needs redesign to handle multiple cores.
+- [x] Multiple cores.
+- [ ] Include directive in assembler. Put MMIO definitions in a file where programs can include them so i don't have to update them everywhere.
 - [ ] Operand checks in assembler. Using immediate where only register is allowed for example.
 - [ ] Make a test suite with some basic programs. Prime numbers, bubble sort, extensive instruction testing. Testing should be done for 16/32/64 don't forget that!
 - [ ] Page tables.
-- [ ] Interrupts. Needs redesign to handle multiple cores.
 - [ ] User mode, syscall.
-- [ ] Multiple cores.
 - [ ] Implement decoder in logic world.
 
 # Documents

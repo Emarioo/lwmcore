@@ -169,7 +169,7 @@ bool uart_mmio_read(EmulatorContext* emulator, HardwareDevice* device, uintptr_t
         return true;
     }
 
-    if (address >= UART_BASE && address + size <= UART_BASE + sizeof(UART_RAM)) {
+    if (address >= UART_BASE && address <= UART_BASE + sizeof(UART_RAM) - size) {
         memcpy(data, (char*)&state->uart_ram + address - UART_BASE, size);
         return true;
     }

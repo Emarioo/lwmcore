@@ -73,17 +73,21 @@ bool platform_mmio_write(EmulatorContext* emulator, HardwareDevice* device, uint
     if (size < 1 || size > 8)
         return false;
     
-    if (address >= PLATFORM_BASE && address + size <= PLATFORM_BASE + sizeof(state->ram)) {
+    if (address >= PLATFORM_BASE && address <= PLATFORM_BASE + sizeof(state->ram) - size) {
         // printf("IC MMIO 0x%zx %zd %d\n", address, size, *(char*)data);
         memcpy((char*)&state->ram + address - PLATFORM_BASE, data, size);
 
         if (address == PLATFORM_CORE_CONTROL) {
             if (state->ram.core_control & PLATFORM_CORE_CONTROL_BOOT) {
-                printf("Boot core%d at 0x%zx\n", state->ram.core_cpuid, state->ram.core_entry);
+                if (emulator->platformConfig->verbose) {
+                    printf("Boot core%d at 0x%zx\n", state->ram.core_cpuid, state->ram.core_entry);
+                }
                 emulator_boot_core(emulator, state->ram.core_cpuid, state->ram.core_entry);
             }
             if (state->ram.core_control & PLATFORM_CORE_CONTROL_RESET) {
-                printf("Reset core%d\n", state->ram.core_cpuid);
+                if (emulator->platformConfig->verbose) {
+                    printf("Reset core%d\n", state->ram.core_cpuid);
+                }
                 emulator_reset_core(emulator, state->ram.core_cpuid);
             }
         }
@@ -97,13 +101,5 @@ bool platform_mmio_read(EmulatorContext* emulator, HardwareDevice* device, uintp
     Platform_State* state = device->state;
     // printf("IC MMIO 0x%zx %zd %c\n", address, size, *(char*)data);
     
-    // if (size < 1 || size > 4)
-    //     return false;
-
-    // if (address >= IC_BASE && address + size <= IC_BASE + sizeof(IC_RAM)) {
-    //     memcpy(data, (char*)&state->ic_ram + address - IC_BASE, size);
-    //     return true;
-    // }
-
     return false;
 }

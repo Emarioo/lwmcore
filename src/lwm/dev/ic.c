@@ -13,12 +13,16 @@
 
 
 #define IC_BASE               0xE000
-#define IC_EOI                IC_BASE+0x0
-#define IC_IRQ_BASE           IC_BASE+0x4
+#define IC_CONTROL            IC_BASE+0x0
+#define IC_IPI_CPUID          IC_BASE+0x4
+#define IC_IPI_VECTOR         IC_BASE+0x6
+#define IC_IRQ_BASE           IC_BASE+0x10
 #define IC_IRQ_OFFSET_VECTOR  0x0
 #define IC_IRQ_OFFSET_CPU     0x1
 #define IC_IRQ_OFFSET_FLAGS   0x2
 #define IC_IRQ_STRIDE         4
+
+#define IC_CONTROL_IPI_SEND_MASK  0x1
 
 #define IC_FLAGS_ENABLE_MASK  0x1
 #define IC_FLAGS_ENABLE_BIT   0
@@ -44,20 +48,22 @@ void ic_queue_interrupt(EmulatorContext* emulator, HardwareDevice* device, int i
 
 typedef struct {
     uint8_t  vector;
-    uint8_t  cpu;
+    uint8_t  cpuid;
     uint16_t flags;
 } IRQEntry;
 
 typedef struct {
+    uint32_t control;
+    uint16_t ipi_cpuid;
+    uint16_t ipi_vector;
     uint32_t eoi;
+    uint32_t padding1;
     IRQEntry entries[IC_MAX_IRQS];
 } IC_RAM;
 
 
 typedef struct {
     IC_RAM ic_ram;
-    int    inService;
-    bool   pendingIRQs[IC_MAX_IRQS];
 } IC_State;
 
 
@@ -75,42 +81,23 @@ bool dev_create_ic(EmulatorContext* emulator, HardwareDevice* device) {
 
 void ic_queue_interrupt(EmulatorContext* emulator, HardwareDevice* device, int irq_number) {
     IC_State* state = device->state;
-    // if (!state->pendingIRQs[irq_number])
     // printf("IRQ %d\n", irq_number);
-    state->pendingIRQs[irq_number] = true;
+
+    if (irq_number < 0 || irq_number >= IC_MAX_IRQS) {
+        return;
+    }
+
+    IRQEntry* entry = &state->ic_ram.entries[irq_number];
+    if ((entry->flags & IC_FLAGS_ENABLE_MASK) == 0) {
+        return;
+    }
+
+    emulator_raise_vector(emulator, entry->cpuid, entry->vector);
 }
 
 void ic_tick(EmulatorContext* emulator, HardwareDevice* device) {
     IC_State* state = device->state;
-
-    bool* interruptLine = (bool*)&emulator->cores[0].interruptLine;
-    int* vectorIndex    = (int*)&emulator->cores[0].vectorIndex;
-
-    if (!state->inService) {
-        *interruptLine = false;
-    }
     
-    // for (int i=0;i<IC_MAX_IRQS;i++) {
-    for (int i=0;i<2;i++) {
-        IRQEntry* entry = &state->ic_ram.entries[i];
-        // printf("irq[%d] %d %d %d\n", i, entry->vector, entry->cpu, entry->flags);
-        if ((entry->flags & IC_FLAGS_ENABLE_MASK) == 0) {
-            state->pendingIRQs[i] = false;
-            continue;
-        }
-
-        if (state->pendingIRQs[i] && !state->inService) {
-            state->inService = true;
-            state->pendingIRQs[i] = false;
-
-            // @TODO Multiple cores!?
-            *interruptLine = true;
-            *vectorIndex = entry->vector;
-            state->ic_ram.eoi = 1;
-
-            // printf("INT LINE %d\n", *vectorIndex);
-        }
-    }
 }
 
 bool ic_mmio_write(EmulatorContext* emulator, HardwareDevice* device, uintptr_t address, size_t size, void* data) {
@@ -119,19 +106,16 @@ bool ic_mmio_write(EmulatorContext* emulator, HardwareDevice* device, uintptr_t 
     
     if (size < 1 || size > 4)
         return false;
-
-    if (address == IC_EOI) {
-        memcpy(&state->ic_ram.eoi, data, size);
-        if (*(char*)data == 0) {
-            state->inService = false;
-        }
-        return true;
-    }
     
-    if (address >= IC_BASE && address + size <= IC_BASE + sizeof(IC_RAM)) {
-        // printf("IC MMIO 0x%zx %zd %d\n", address, size, *(char*)data);
+    if (address >= IC_BASE && address <= IC_BASE + sizeof(IC_RAM) - size) {
         memcpy((char*)&state->ic_ram + address - IC_BASE, data, size);
-        // @TODO Update IRQs and interrupts
+
+        if (address == IC_CONTROL) {
+            if (state->ic_ram.control & IC_CONTROL_IPI_SEND_MASK) {
+                emulator_raise_vector(emulator, state->ic_ram.ipi_cpuid, state->ic_ram.ipi_vector);
+            }
+        }
+
         return true;
     }
 
@@ -146,7 +130,7 @@ bool ic_mmio_read(EmulatorContext* emulator, HardwareDevice* device, uintptr_t a
     if (size < 1 || size > 4)
         return false;
 
-    if (address >= IC_BASE && address + size <= IC_BASE + sizeof(IC_RAM)) {
+    if (address >= IC_BASE && address <= IC_BASE + sizeof(IC_RAM) - size) {
         memcpy(data, (char*)&state->ic_ram + address - IC_BASE, size);
         return true;
     }
