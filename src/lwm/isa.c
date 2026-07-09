@@ -102,24 +102,27 @@ int largest_encoding_ext(int opcode, AddressingForm form, int* lowestBytes) {
         case OPCODE_STH:
         case OPCODE_STL:
         case OPCODE_STQ:
+        case OPCODE_XADD:
+        case OPCODE_CAS:
+            int baseBytes = opcode == OPCODE_CAS ? 3 : 2;
             switch (form) {
-                case ADDRESSING_ABS16:          return 4;
-                case ADDRESSING_ABS32:          return 6;
-                case ADDRESSING_ABS64:          return 10;
+                case ADDRESSING_ABS16:          return baseBytes + 2;
+                case ADDRESSING_ABS32:          return baseBytes + 4;
+                case ADDRESSING_ABS64:          return baseBytes + 8;
                 case ADDRESSING_REG1_DISP8:   
-                case ADDRESSING_REG1_PC_DISP8:  return 4;
+                case ADDRESSING_REG1_PC_DISP8:  return baseBytes + 2;
                 case ADDRESSING_REG1_DISP16:    
-                case ADDRESSING_REG1_PC_DISP16: return 5;
+                case ADDRESSING_REG1_PC_DISP16: return baseBytes + 3;
                 case ADDRESSING_REG1_DISP32:    
-                case ADDRESSING_REG1_PC_DISP32: if (lowestBytes) *lowestBytes = 4; return 7;
-                case ADDRESSING_REG1_DISP64:    return 11;
-                case ADDRESSING_REG2_DISP8:     return 5;
-                case ADDRESSING_REG2_DISP16:    return 6;
-                case ADDRESSING_REG2_DISP32:    return 8;
-                case ADDRESSING_REG2_DISP64:    return 12;
-                case ADDRESSING_PC_DISP8:       return 3;
-                case ADDRESSING_PC_DISP16:      return 4;
-                case ADDRESSING_PC_DISP32:      if (lowestBytes) *lowestBytes = 3; return 6;
+                case ADDRESSING_REG1_PC_DISP32: if (lowestBytes) *lowestBytes = baseBytes + 2; return baseBytes + 5;
+                case ADDRESSING_REG1_DISP64:    return baseBytes + 9;
+                case ADDRESSING_REG2_DISP8:     return baseBytes + 3;
+                case ADDRESSING_REG2_DISP16:    return baseBytes + 4;
+                case ADDRESSING_REG2_DISP32:    return baseBytes + 6;
+                case ADDRESSING_REG2_DISP64:    return baseBytes + 10;
+                case ADDRESSING_PC_DISP8:       return baseBytes + 1;
+                case ADDRESSING_PC_DISP16:      return baseBytes + 2;
+                case ADDRESSING_PC_DISP32:      if (lowestBytes) *lowestBytes = baseBytes + 1; return baseBytes + 4;
             }
         case OPCODE_SAVE:
         case OPCODE_RESTORE: return 3;
@@ -193,6 +196,8 @@ const char* opcode_to_string(int opcode) {
         CASE(OPCODE_STH, "sth")
         CASE(OPCODE_STL, "stl")
         CASE(OPCODE_STQ, "stq")
+        CASE(OPCODE_XADD, "xadd")
+        CASE(OPCODE_CAS, "cas")
         CASE(OPCODE_SAVE, "save")
         CASE(OPCODE_RESTORE, "restore")
         CASE(OPCODE_RDTICK, "rdtick")

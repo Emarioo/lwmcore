@@ -131,6 +131,3 @@ putstring:
 
     pop lr
     ret
-
-
-

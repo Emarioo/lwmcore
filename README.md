@@ -80,7 +80,7 @@ Core state:
        cr12: 0 (0x0)        cr13: 0 (0x0)        cr14: 0 (0x0)        cr15: 0 (0x0)
 ```
 
-# TODO
+# Requirements for v1.0
 
 - [x] Assembler only handles labels for call. Do same for jump and conditional jumps.
 - [x] Read tick and timer.
@@ -90,13 +90,21 @@ Core state:
 - [x] Multiple cores.
 - [x] Page tables
 - [x] User mode, syscall.
-- [ ] Atomic instructions.
+- [x] Atomic instructions. (xadd, cas)
 - [ ] Include directive in assembler. Put MMIO definitions in a file where programs can include them so i don't have to update them everywhere.
 - [ ] Operand checks in assembler. Using immediate where only register is allowed for example.
 - [ ] Make a test suite with some basic programs. Prime numbers, bubble sort, extensive instruction testing. Testing should be done for 16/32/64 don't forget that!
+- [ ] Local jumps in assembler `.loop ->  lock.loop`
 - [ ] Test 32-bit and 64-bit mode.
-- [ ] Display device. (uart for keyboard input)
+- [ ] Resolve TODOs in code.
+- [ ] Finish CPU ISA. A revision for CPU encodings in the future is planned along with generating C code to encode/decode the opcodes from a scheme.
+- [ ] Finish assembler guide.
+- [ ] Finish emulator guide.
+- [ ] Finish quick guide to the emulator, assembler, and CPU.
+
+# Future TODOs
 - [ ] Disk device
+- [ ] Display device. (uart for keyboard input)
 - [ ] Implement decoder in logic world.
 
 # Documents

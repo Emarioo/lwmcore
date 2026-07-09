@@ -91,6 +91,9 @@ typedef enum {
     MEMOP_STH,
     MEMOP_STL,
     MEMOP_STQ,
+    MEMOP_XADD,
+
+    MEMOP_CAS,
 } MemoryInstructionKind;
 
 
@@ -101,7 +104,7 @@ void emit_rdtick2(Builder* builder, int reg0, int reg1, int reg2, int reg3);
 
 
 
-void emit_memop(Builder* builder, MemoryInstructionKind kind, AddressingForm form, int reg0, int reg_base, int reg_index, int64_t displacement, uint64_t* fixup);
+void emit_memop(Builder* builder, MemoryInstructionKind kind, AddressingForm form, int reg0, int reg1, int reg_base, int reg_index, int64_t displacement, uint64_t* fixup);
 
 void emit_jmp32(Builder* builder, uint64_t* fixup);
 void emit_jmp16(Builder* builder, uint64_t* fixup);

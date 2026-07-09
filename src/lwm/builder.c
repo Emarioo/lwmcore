@@ -242,16 +242,29 @@ static inline int memop_to_opcode(MemoryInstructionKind kind) {
     return OPCODE_LEA + kind - MEMOP_LEA;
 }
 
-void emit_memop(Builder* builder, MemoryInstructionKind kind, AddressingForm form, int reg0, int reg_base, int reg_index, int64_t in_displacement, uint64_t* fixup) {
+void emit_memop(Builder* builder, MemoryInstructionKind kind, AddressingForm form, int reg0, int reg1, int reg_base, int reg_index, int64_t in_displacement, uint64_t* fixup) {
     int opcode = memop_to_opcode(kind);
 
     int64_t displacement = in_displacement;
 
+    if (kind != MEMOP_CAS) {
+        uint8_t bytes[] = {
+            opcode,
+            (reg0 << 3) | ADDRESSING_MASK_PRI(form),
+        };
+        APPEND_BYTES(bytes);
+    } else {
+        uint8_t bytes[] = {
+            opcode,
+            (reg0 << 3) | ADDRESSING_MASK_PRI(form),
+            reg1,
+        };
+        APPEND_BYTES(bytes);
+    }
+
     switch (form) {
         case ADDRESSING_ABS16: {
             uint8_t bytes[] = {
-                opcode,
-                (reg0 << 3) | ADDRESSING_MASK_PRI(form),
                 displacement & 0xFF,
                 (displacement >> 8) & 0xFF,
             };
@@ -259,8 +272,6 @@ void emit_memop(Builder* builder, MemoryInstructionKind kind, AddressingForm for
         } break;
         case ADDRESSING_ABS32: {
             uint8_t bytes[] = {
-                opcode,
-                (reg0 << 3) | ADDRESSING_MASK_PRI(form),
                 (displacement >> 0) & 0xFF,
                 (displacement >> 8) & 0xFF,
                 (displacement >> 16) & 0xFF,
@@ -270,8 +281,6 @@ void emit_memop(Builder* builder, MemoryInstructionKind kind, AddressingForm for
         } break;
         case ADDRESSING_ABS64: {
             uint8_t bytes[] = {
-                opcode,
-                (reg0 << 3) | ADDRESSING_MASK_PRI(form),
                 (displacement >> 0) & 0xFF,
                 (displacement >> 8) & 0xFF,
                 (displacement >> 16) & 0xFF,
@@ -285,8 +294,6 @@ void emit_memop(Builder* builder, MemoryInstructionKind kind, AddressingForm for
         } break;
         case ADDRESSING_REG1_DISP8: {
             uint8_t bytes[] = {
-                opcode,
-                (reg0 << 3) | ADDRESSING_MASK_PRI(form),
                 (reg_base << 3) | ADDRESSING_MASK_SEC(form),
                 (displacement >> 0) & 0xFF,
             };
@@ -294,8 +301,6 @@ void emit_memop(Builder* builder, MemoryInstructionKind kind, AddressingForm for
         } break;
         case ADDRESSING_REG1_DISP16: {
             uint8_t bytes[] = {
-                opcode,
-                (reg0 << 3) | ADDRESSING_MASK_PRI(form),
                 (reg_base << 3) | ADDRESSING_MASK_SEC(form),
                 (displacement >> 0) & 0xFF,
                 (displacement >> 8) & 0xFF,
@@ -304,8 +309,6 @@ void emit_memop(Builder* builder, MemoryInstructionKind kind, AddressingForm for
         } break;
         case ADDRESSING_REG1_DISP32: {
             uint8_t bytes[] = {
-                opcode,
-                (reg0 << 3) | ADDRESSING_MASK_PRI(form),
                 (reg_base << 3) | ADDRESSING_MASK_SEC(form),
                 (displacement >> 0) & 0xFF,
                 (displacement >> 8) & 0xFF,
@@ -316,8 +319,6 @@ void emit_memop(Builder* builder, MemoryInstructionKind kind, AddressingForm for
         } break;
         case ADDRESSING_REG1_DISP64: {
             uint8_t bytes[] = {
-                opcode,
-                (reg0 << 3) | ADDRESSING_MASK_PRI(form),
                 (reg_base << 3) | ADDRESSING_MASK_SEC(form),
                 (displacement >> 0) & 0xFF,
                 (displacement >> 8) & 0xFF,
@@ -332,8 +333,6 @@ void emit_memop(Builder* builder, MemoryInstructionKind kind, AddressingForm for
         } break;
         case ADDRESSING_REG1_PC_DISP8: {
             uint8_t bytes[] = {
-                opcode,
-                (reg0 << 3) | ADDRESSING_MASK_PRI(form),
                 (reg_base << 3) | ADDRESSING_MASK_SEC(form),
                 (displacement >> 0) & 0xFF,
             };
@@ -342,8 +341,6 @@ void emit_memop(Builder* builder, MemoryInstructionKind kind, AddressingForm for
         } break;
         case ADDRESSING_REG1_PC_DISP16: {
             uint8_t bytes[] = {
-                opcode,
-                (reg0 << 3) | ADDRESSING_MASK_PRI(form),
                 (reg_base << 3) | ADDRESSING_MASK_SEC(form),
                 (displacement >> 0) & 0xFF,
                 (displacement >> 8) & 0xFF,
@@ -353,8 +350,6 @@ void emit_memop(Builder* builder, MemoryInstructionKind kind, AddressingForm for
         } break;
         case ADDRESSING_REG1_PC_DISP32: {
             uint8_t bytes[] = {
-                opcode,
-                (reg0 << 3) | ADDRESSING_MASK_PRI(form),
                 (reg_base << 3) | ADDRESSING_MASK_SEC(form),
                 (displacement >> 0) & 0xFF,
                 (displacement >> 8) & 0xFF,
@@ -366,8 +361,6 @@ void emit_memop(Builder* builder, MemoryInstructionKind kind, AddressingForm for
         } break;
         case ADDRESSING_REG2_DISP8: {
             uint8_t bytes[] = {
-                opcode,
-                (reg0 << 3) | ADDRESSING_MASK_PRI(form),
                 (reg_base << 3) | (ADDRESSING_MASK_SEC(form) & 0x7),
                 (reg_index << 3) | ((ADDRESSING_MASK_SEC(form) >> 3) & 0x7),
                 (displacement >> 0) & 0xFF,
@@ -376,8 +369,6 @@ void emit_memop(Builder* builder, MemoryInstructionKind kind, AddressingForm for
         } break;
         case ADDRESSING_REG2_DISP16: {
             uint8_t bytes[] = {
-                opcode,
-                (reg0 << 3) | ADDRESSING_MASK_PRI(form),
                 (reg_base << 3) | (ADDRESSING_MASK_SEC(form) & 0x7),
                 (reg_index << 3) | ((ADDRESSING_MASK_SEC(form) >> 3) & 0x7),
                 (displacement >> 0) & 0xFF,
@@ -387,8 +378,6 @@ void emit_memop(Builder* builder, MemoryInstructionKind kind, AddressingForm for
         } break;
         case ADDRESSING_REG2_DISP32: {
             uint8_t bytes[] = {
-                opcode,
-                (reg0 << 3) | ADDRESSING_MASK_PRI(form),
                 (reg_base << 3) | (ADDRESSING_MASK_SEC(form) & 0x7),
                 (reg_index << 3) | ((ADDRESSING_MASK_SEC(form) >> 3) & 0x7),
                 (displacement >> 0) & 0xFF,
@@ -400,8 +389,6 @@ void emit_memop(Builder* builder, MemoryInstructionKind kind, AddressingForm for
         } break;
         case ADDRESSING_PC_DISP8: {
             uint8_t bytes[] = {
-                opcode,
-                (reg0 << 3) | ADDRESSING_MASK_PRI(form),
                 (displacement >> 0) & 0xFF,
             };
             APPEND_BYTES(bytes);
@@ -409,8 +396,6 @@ void emit_memop(Builder* builder, MemoryInstructionKind kind, AddressingForm for
         } break;
         case ADDRESSING_PC_DISP16: {
             uint8_t bytes[] = {
-                opcode,
-                (reg0 << 3) | ADDRESSING_MASK_PRI(form),
                 (displacement >> 0) & 0xFF,
                 (displacement >> 8) & 0xFF,
             };
@@ -419,8 +404,6 @@ void emit_memop(Builder* builder, MemoryInstructionKind kind, AddressingForm for
         } break;
         case ADDRESSING_PC_DISP32: {
             uint8_t bytes[] = {
-                opcode,
-                (reg0 << 3) | ADDRESSING_MASK_PRI(form),
                 (displacement >> 0) & 0xFF,
                 (displacement >> 8) & 0xFF,
                 (displacement >> 16) & 0xFF,

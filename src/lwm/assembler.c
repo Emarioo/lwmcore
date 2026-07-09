@@ -110,7 +110,7 @@ LabelFixup* create_fixup(AssemblerContext* context, Instruction* inst, Operand* 
     // Because PC refers to the start of the instruction and not the end (since we haven't emitted it yet)
     // we add a margin of 4 bytes to make up for it. If any instruction with label has more than 4 bytes
     // we are in trouble. At the very least our label fixup code will cause an error when this happens.
-    int margin = 0;
+    int margin = 8;
 
     if (abs(relativeLow) < 0x80-margin && abs(relativeHigh) < 0x80-margin) {
         fixup->reloc_size = 1;
@@ -762,6 +762,8 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
         else CASE_OPCODE2("sth", OPCODE_STH, MEMOP_STH) 
         else CASE_OPCODE2("stl", OPCODE_STL, MEMOP_STL) 
         else CASE_OPCODE2("stq", OPCODE_STQ, MEMOP_STQ) 
+        else CASE_OPCODE2("xadd", OPCODE_XADD, MEMOP_XADD) 
+        else CASE_OPCODE2("cas", OPCODE_CAS, MEMOP_CAS) 
         else CASE_OPCODE("push", OPCODE_PUSH) 
         else CASE_OPCODE("pop", OPCODE_POP) 
         else CASE_OPCODE("save", OPCODE_SAVE) 
@@ -1106,10 +1108,13 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                 case OPCODE_STB: 
                 case OPCODE_STH: 
                 case OPCODE_STL: 
-                case OPCODE_STQ: {
-                    Operand* memoryOperand = &inst->operands[1];
+                case OPCODE_STQ:
+                case OPCODE_XADD:
+                case OPCODE_CAS:
+                {
+                    Operand* memoryOperand = inst->opcode == OPCODE_CAS ? &inst->operands[2] : &inst->operands[1];
                     if (memoryOperand->label.len == 0) {
-                        emit_memop(builder, inst->sub_opcode, memoryOperand->form, inst->operands[0].regnum, memoryOperand->reg_base, memoryOperand->reg_index, memoryOperand->immediate, NULL);
+                        emit_memop(builder, inst->sub_opcode, memoryOperand->form, inst->operands[0].regnum, inst->operands[1].regnum, memoryOperand->reg_base, memoryOperand->reg_index, memoryOperand->immediate, NULL);
                         break;
                     }
                     LabelFixup* fixup = create_fixup(context, inst, memoryOperand);
@@ -1128,7 +1133,7 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                             memoryOperand->form = ADDRESSING_REG1_PC_DISP16;
                         }
                     }
-                    emit_memop(builder, inst->sub_opcode, memoryOperand->form, inst->operands[0].regnum, memoryOperand->reg_base, memoryOperand->reg_index, memoryOperand->immediate, &fixup->rom_offset);
+                    emit_memop(builder, inst->sub_opcode, memoryOperand->form, inst->operands[0].regnum, inst->operands[1].regnum, memoryOperand->reg_base, memoryOperand->reg_index, memoryOperand->immediate, &fixup->rom_offset);
                 } break;
                 case OPCODE_PUSH: {       EMIT_REG1(push);
                 } break;

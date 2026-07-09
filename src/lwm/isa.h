@@ -139,14 +139,17 @@ typedef enum {
     OPCODE_STH,
     OPCODE_STL,
     OPCODE_STQ,
-    // OPCODE_XADD,
+    OPCODE_XADD,
+    // [ opcode 8 | reg 5 | reg 5 | memory addressing ]
+    // cas expected, new, [addressing]
+    //     new = old value
+    OPCODE_CAS,
 
     // [ opcode 8 | reg 5 | immediate8 ]
     OPCODE_SAVE,
     OPCODE_RESTORE,
 
-    // [ opcode 8 |  ]
-    // OPCODE_CAS,
+
     // OPCODE_FENCE; // Add later, useful for real CPUs but not so much for emulator or logic world.
 
     // Special instructions
