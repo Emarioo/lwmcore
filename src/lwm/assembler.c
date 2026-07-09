@@ -142,6 +142,15 @@ LabelFixup* create_fixup_abs(AssemblerContext* context, int head, uintptr_t addr
     return fixup;
 }
 
+void prefix_namespace(string* name, const string namespace) {
+    name->ptr = realloc(name->ptr, name->len + 1 + namespace.len + 1);
+    memcpy(name->ptr + namespace.len + 1, name->ptr, name->len);
+    memcpy(name->ptr, namespace.ptr, namespace.len);
+    name->ptr[namespace.len] = '.';
+    name->ptr[namespace.len + 1 + name->len] = '\0';
+    name->len = namespace.len + 1 + name->len;
+}
+
 AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOptions* options) {
 
     string out_text;
@@ -203,6 +212,8 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
 
     uint8_t queuedAlignment = 0;
 
+    string localNamespace = {.len = 0, .ptr = ""};
+
     while (true) {
 
         parse_space(context, &head);
@@ -213,11 +224,22 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
 
         int location_head = head;
 
+        char dotChar = get_char(context, head);
+        if (dotChar == '.') {
+            if (localNamespace.len == 0) {
+                ERROR_SRC_RET(head, "A local label must be preceded by a normal label.\n");
+            }
+            head++;
+        }
         string name;
         int parsed_chars = parse_name(context, &head, &name);
         if (!parsed_chars) {
             char chr = get_char(context, head);
             ERROR_SRC_RET(head, "Unexpected character '%c'\n", chr);
+        }
+
+        if (dotChar == '.')  {
+            prefix_namespace(&name, localNamespace);
         }
         
         int data_bytes = 0;
@@ -504,6 +526,9 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
         parse_space_not_newline(context, &head);
 
         if (get_char(context, head) == ':') {
+            if (dotChar != '.') {
+                localNamespace = name;
+            }
             // label
             Section* currentSection = &context->sections[context->sections_len-1];
             // if (currentSection->labels_len >= MAX_LABELS_PER_BLOCK) {
@@ -540,6 +565,15 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
         while (true) {
             string operand;
             uint64_t value;
+
+            char dotChar = get_char(context, head);
+            if (dotChar == '.') {
+                if (localNamespace.len == 0) {
+                    ERROR_SRC_RET(head, "A local label must be preceded by a normal label.\n");
+                }
+                head++;
+            }
+
             int parsed_chars = parse_name(context, &head, &operand);
             if(parsed_chars) {
                 int reg = get_regnr(operand);
@@ -547,6 +581,9 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                     inst.operands[operandIndex].regnum = reg;
                     operandIndex++;
                 } else {
+                    if (dotChar == '.')  {
+                        prefix_namespace(&operand, localNamespace);
+                    }
                     inst.operands[operandIndex].label = operand;
                     operandIndex++;
                 }

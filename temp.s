@@ -30,7 +30,7 @@ main:
     li r0, #PLATFORM_CORE_CONTROL_BOOT
     stb r0, [#PLATFORM_CORE_CONTROL]
 
-  core0_loop:
+.loop:
     li r1, 1
 
     call lock
@@ -44,14 +44,14 @@ main:
     sth r0, [core0_counter]
 
     li r2, 100
-    jne r0, r2, core0_loop
+    jne r0, r2, .loop
 
     // Add some delay for core1 to finish counting
     li r1, 1
     li r0, 80
-  delay:
+.delay:
     sub r0, r0, r1
-    jnz r0, delay
+    jnz r0, .delay
 
     ldh r0, [global_counter]
     ldh r1, [core0_counter]
@@ -62,7 +62,7 @@ main:
 core_entry:
     li sp, 0x1100
 
-  core1_loop:
+.loop:
     li r1, 1
 
     call lock
@@ -76,10 +76,10 @@ core_entry:
     sth r0, [core1_counter]
 
     li r2, 100
-    jne r0, r2, core1_loop
+    jne r0, r2, .loop
 
-  spin:
-    jmp spin
+.spin:
+    jmp .spin
 
     hlt
 
@@ -91,10 +91,10 @@ lock:
     push r1
     li r0, 0
 
-  lock_loop:
+.loop:
     li r1, 1
     cas r0, r1, [mutex_lock]
-    jne r0, r1, lock_loop
+    jne r0, r1, .loop
 
     pop r1
     pop r0
