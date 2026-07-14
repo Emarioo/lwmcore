@@ -17,6 +17,7 @@ void print_help() {
     printf("  -e,--emulate    : Assembles and emulates the file.\n");
     printf("  -r,--rom <path> : Assembles and writes a Logic World subassembly file.\n");
     printf("  -f,--force      : Will overwrite user made subassembly.\n");
+    printf("  -p,--platform-config : Config specifies CPU family (16/32/64-bit, core count, RAM size, etc.).\n");
     printf("  -s <path>       : Generate encoder from scheme.\n");
     printf("  --safe          : Don't write any files, log which ones would have been written to.\n");
     printf("  -q,--quiet      : Turn off log messages.\n");
@@ -27,6 +28,7 @@ int main(int argc, const char** argv) {
     string bin_file = {0, nullptr};
     string rom_file = {0, nullptr};
     const char* scheme_file = NULL;
+    const char* platform_config_file = NULL;
     bool do_emulate = false;
     bool do_rom = false;
     bool do_scheme = false;
@@ -64,6 +66,14 @@ int main(int argc, const char** argv) {
             overwrite_user_subassembly = true;
         } else if(!strcmp(arg, "--safe")) {
             DISABLE_FILE_WRITES = true;
+        } else if(!strcmp(arg, "-p") || !strcmp(arg, "--platform-config")) {
+            if(i+1 >= argc) {
+                error("Missing argument after '%s'\n", arg);
+                return 1;
+            }
+            arg = argv[i+1];
+            i++;
+            platform_config_file = arg;
         } else if(!strcmp(arg, "-q") || !strcmp(arg, "--quiet")) {
             be_quiet = true;
         } else if(!strcmp(arg, "-d")) {
@@ -134,21 +144,31 @@ int main(int argc, const char** argv) {
     config.core_count = 2;
     config.core_mode = MODE_16;
 
-    FN_init deviceConstructors[] = {
-        dev_create_emu,
-        dev_create_ic,
-        dev_create_uart,
-        platform_init,
-    };
-    
-    config.devices_len = ARRAY_LENGTH(deviceConstructors);
-    config.devices = malloc(sizeof(HardwareDevice*) * config.devices_len);
-    memset(config.devices, 0, sizeof(HardwareDevice*) * config.devices_len);
+    if (platform_config_file) {
+        bool yes = parse_platform_config(platform_config_file, &config);
+        if (!yes) {
+            return 1;
+        }
+    }
 
-    for (int i=0;i<config.devices_len;i++) {
-        HardwareDevice* device = calloc(1, sizeof(HardwareDevice));
-        config.devices[i] = device;
-        device->init = deviceConstructors[i];
+    if (config.devices_len == 0) {
+        // If config didn't specify devices then we use default ones.
+        FN_init deviceConstructors[] = {
+            dev_create_emu,
+            dev_create_ic,
+            dev_create_uart,
+            platform_init,
+        };
+        
+        config.devices_len = ARRAY_LENGTH(deviceConstructors);
+        config.devices = malloc(sizeof(HardwareDevice*) * config.devices_len);
+        memset(config.devices, 0, sizeof(HardwareDevice*) * config.devices_len);
+
+        for (int i=0;i<config.devices_len;i++) {
+            HardwareDevice* device = calloc(1, sizeof(HardwareDevice));
+            config.devices[i] = device;
+            device->init = deviceConstructors[i];
+        }
     }
     
 

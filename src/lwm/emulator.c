@@ -5,6 +5,7 @@
 #include "lwm/isa.h"
 
 #include "lwm/util.h"
+#include "lwm/parser_util.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -675,8 +676,6 @@ void emulator_boot_core(EmulatorContext* emulator, int cpuid, uintptr_t entry) {
     if (core->running)
         return;
 
-    core->emulator = emulator;
-    core->mode = MODE_16;
     core->pc = entry;
     core->crstatus = 0;
     core->crcpuid = cpuid;
@@ -711,7 +710,7 @@ void emulator_start(PlatformConfig* config) {
     }
 
     emulator->platformConfig = config;
-    emulator->physicalMemory_size = 0x100000;
+    emulator->physicalMemory_size = config->ram_size;
     emulator->physicalMemory = malloc(emulator->physicalMemory_size);
     memset(emulator->physicalMemory, 0xDF, emulator->physicalMemory_size);
 
@@ -724,6 +723,13 @@ void emulator_start(PlatformConfig* config) {
 
     emulator->cores = malloc(sizeof(CoreState) * config->core_count);
     memset(emulator->cores, 0, sizeof(CoreState) * config->core_count);
+
+
+    for (int i=0;i<config->core_count;i++) {
+        CoreState* core = &emulator->cores[i];
+        core->emulator = emulator;
+        core->mode = config->core_mode;
+    }
 
     emulator_boot_core(emulator, 0, emulator->platformConfig->core_entry);
 
@@ -1479,4 +1485,170 @@ void dump(PlatformConfig* config) {
     }
 
 }
+
+#define ERROR_SRC_RET(HEAD, FORMAT, ...) SourceLocation loc = get_location(context, HEAD); error_src(loc, FORMAT, ##__VA_ARGS__); longjmp(context->jumpBuffer, 1)
+
+
+bool parse_platform_config(const char* path, PlatformConfig* config) {
+    bool res;
+    char*  fileBuffer;
+    size_t fileBuffer_len;
+    res = readFile(path, (void**)&fileBuffer, &fileBuffer_len);
+    if (!res) {
+        return false;
+    }
+
+    ParserContext _context = {0};
+    ParserContext* context = &_context;
+
+    SourceSpan defaultSpan = {
+        .file = path,
+        .dst_start = 0,   
+        .dst_end = fileBuffer_len,
+        .src_start = 0,   
+        .src_end = fileBuffer_len,
+    };
+    context->spans_len = 1;
+    context->spans = &defaultSpan;
+    
+    context->path = path;
+    context->text = fileBuffer;
+    context->text_len = fileBuffer_len;
+
+    int jmpResult = setjmp(context->jumpBuffer);
+    if (jmpResult != 0) {
+        return false;
+    }
+
+    config->core_count = 2;
+    config->core_mode = MODE_16;
+    config->core_entry = 0x0;
+    config->devices_len = 0;
+    config->devices = NULL;
+    config->rom_path = NULL;
+    config->rom = NULL;
+    config->rom_len = 0;
+    config->rom_load_address = 0x0;
+    config->ram_size = 0x400000;
+
+    int head = 0;
+    int parsedChars;
+    while (true) {
+
+        parse_space(context, &head);
+        
+        if(parse_eof(context, head)) {
+            break;
+        }
+        
+        string keyname;
+        int headAtKeyname = head;
+        
+        parsedChars = parse_name(context, &head, &keyname);
+        if (!parsedChars) {
+            ERROR_SRC_RET(head, "Expected a key name.\n");
+        }
+        
+        parse_space(context, &head);
+        
+        char chr = get_char(context, head);
+        if (chr != '=') {
+            ERROR_SRC_RET(head, "Expected '='.\n");
+        }
+        head++;
+        
+        parse_space(context, &head);
+
+        if (equal(keyname, "core_count")) {
+            uint64_t value;
+            parsedChars = parse_int(context, &head, &value);
+            if (!parsedChars) {
+                ERROR_SRC_RET(head, "Expected a number.\n");
+            }
+            
+            config->core_count = value;
+
+        } else if (equal(keyname, "core_entry")) {
+            uint64_t value;
+            parsedChars = parse_int(context, &head, &value);
+            if (!parsedChars) {
+                ERROR_SRC_RET(head, "Expected a number.\n");
+            }
+            
+            config->core_entry = value;
+
+        } else if (equal(keyname, "rom_load_address")) {
+            uint64_t value;
+            parsedChars = parse_int(context, &head, &value);
+            if (!parsedChars) {
+                ERROR_SRC_RET(head, "Expected a number.\n");
+            }
+            
+            config->rom_load_address = value;
+
+        } else if (equal(keyname, "ram_size")) {
+            uint64_t value;
+            parsedChars = parse_int(context, &head, &value);
+            if (!parsedChars) {
+                ERROR_SRC_RET(head, "Expected a number.\n");
+            }
+
+            int headAtSuffix = head;
+            
+            string suffix;
+            parse_name(context, &head, &suffix);
+            if (suffix.len == 0) {
+                // no suffix
+            } else if (equal(suffix, "KB")) {
+                value *= 1024;
+            } else if (equal(suffix, "MB")) {
+                value *= 1024 * 1024;
+            } else if (equal(suffix, "GB")) {
+                value *= 1024 * 1024 * 1024;
+            } else {
+                ERROR_SRC_RET(headAtSuffix, "Unknown suffix '%s'. KB/MB/GB are valid.\n", suffix.ptr);
+            }
+            
+            config->ram_size = value;
+
+        } else if (equal(keyname, "cpu_family")) {
+            int headAtValue = head;
+
+            string family;
+            parsedChars = parse_name(context, &head, &family);
+
+            CoreMode mode;
+            if (equal(family, "lwm16")) {
+                mode = MODE_16;
+            } else if (equal(family, "lwm32")) {
+                mode = MODE_32;
+            } else if (equal(family, "lwm64")) {
+                mode = MODE_64;
+            } else {
+                ERROR_SRC_RET(headAtValue, "Unknown family '%s'. lwm16/lwm32/lwm64 are valid.\n", family.ptr);
+            }
+
+            config->core_mode = mode;
+
+        } else if (equal(keyname, "cpu_features")) {
+
+            ERROR_SRC_RET(head, "CPU features are not implemented.\n");
+            
+        } else if (equal(keyname, "devices")) {
+
+            ERROR_SRC_RET(head, "Devices are not implemented in config file. They must be hardcoded in the emulator.\n");
+            
+        } else {
+
+            ERROR_SRC_RET(headAtKeyname, "Unknown config option.\n");
+
+        }
+    }
+
+    // @TODO Memory leak
+
+    return true;
+}
+
+
 

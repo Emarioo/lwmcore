@@ -1,15 +1,12 @@
 
 
-stuff:
-
-jmp ha
 
 
 
 
 section .data 0x50
 msg:
-    byte[] "Hello from defs\n\0"g
+    byte[] "Hello from defs\n\0"
 
 section .text 0x0
     jmp main

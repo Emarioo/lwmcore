@@ -232,7 +232,7 @@ int parse_space(ParserContext* context, int* inout_head) {
             chr_next = text[head + 1];
         }
 
-        if ((chr == '#' && (chr == 0 || chr == ' ' || chr == '\n' )) || chr == ';' || (chr == '/' && chr_next == '/')) {
+        if ((chr == '#' && ( chr_next == 0 || is_space(chr_next) )) || chr == ';' || (chr == '/' && chr_next == '/')) {
             head++;
             if(chr == '/') {
                 head++;

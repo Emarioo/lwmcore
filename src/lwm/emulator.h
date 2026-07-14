@@ -80,6 +80,7 @@ typedef bool(*FN_init)           (EmulatorContext* emulator, HardwareDevice* dev
 typedef void(*FN_queue_interrupt)(EmulatorContext* emulator, HardwareDevice* device, int irq_number);
 
 struct HardwareDevice {
+    const char*        sharedLibraryPath;
     void*              state;
     void*              user_data;
     FN_init            init;
@@ -90,18 +91,21 @@ struct HardwareDevice {
 };
 
 typedef struct {
+    const char* rom_path;
+    void*       rom;
+    int         rom_len;
+    uint64_t    rom_load_address;
+    
     uint64_t core_entry;
-    void*    rom;
-    int      rom_len;
-
+    uint64_t ram_size;
     int      core_count;
     CoreMode core_mode;
 
-    bool quiet;
-    bool verbose;
-
     int              devices_len;
     HardwareDevice** devices;
+
+    bool quiet;
+    bool verbose;
 } PlatformConfig;
 
 struct EmulatorContext {
@@ -123,5 +127,7 @@ void emulator_boot_core(EmulatorContext* emulator, int cpuid, uintptr_t entry);
 void emulator_reset_core(EmulatorContext* emulator, int cpuid);
 
 void emulator_start(PlatformConfig* config);
+
+bool parse_platform_config(const char* path, PlatformConfig* config);
 
 void dump(PlatformConfig* config);
