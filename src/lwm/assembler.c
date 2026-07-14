@@ -790,10 +790,10 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
         else CASE_OPCODE2("jle", OPCODE_JCOND, COND_LE)
         else CASE_OPCODE2("jgt", OPCODE_JCOND, COND_GT)
         else CASE_OPCODE2("jge", OPCODE_JCOND, COND_GE)
-        else CASE_OPCODE2("ja",  OPCODE_JCOND, COND_A)
-        else CASE_OPCODE2("jae", OPCODE_JCOND, COND_AE)
         else CASE_OPCODE2("jb",  OPCODE_JCOND, COND_B)
         else CASE_OPCODE2("jbe", OPCODE_JCOND, COND_BE)
+        else CASE_OPCODE2("ja",  OPCODE_JCOND, COND_A)
+        else CASE_OPCODE2("jae", OPCODE_JCOND, COND_AE)
         else CASE_OPCODE("not", OPCODE_NOT)
         else CASE_OPCODE("mfcr", OPCODE_MFCR) 
         else CASE_OPCODE("mtcr", OPCODE_MTCR) 
@@ -855,13 +855,13 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
         if (inst.opcode == OPCODE_CALL) {
             Operand* labelOperand = &inst.operands[0];
             if (!labelOperand->label.len) {
-                inst.opcode == OPCODE_CALL_REG;
+                inst.opcode = OPCODE_CALL_REG;
             }
         }
         if (inst.opcode == OPCODE_JMP) {
             Operand* labelOperand = &inst.operands[0];
             if (!labelOperand->label.len) {
-                inst.opcode == OPCODE_JMP_REG;
+                inst.opcode = OPCODE_JMP_REG;
             }
         }
         

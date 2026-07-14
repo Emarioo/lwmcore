@@ -1220,10 +1220,10 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
                 case COND_LE: result = leftSigned <= rightSigned; break;
                 case COND_GT: result = leftSigned > rightSigned; break;
                 case COND_GE: result = leftSigned >= rightSigned; break;
-                case COND_A:  result = left < right; break;
-                case COND_AE: result = left <= right; break;
-                case COND_B:  result = left > right; break;
+                case COND_B:  result = left < right; break;
                 case COND_BE: result = left >= right; break;
+                case COND_A:  result = left > right; break;
+                case COND_AE: result = left >= right; break;
             }
 
             if (result) {

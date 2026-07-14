@@ -18,6 +18,8 @@ main:
     ldq r0, [value64]
     #TEST(0x1234567891011121)
 
+    # No sign extended load for quad.
+
     #TEST_POST
     hlt
 

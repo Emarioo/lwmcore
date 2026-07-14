@@ -11,21 +11,32 @@ main:
 
     # Byte
 
-    li r0, 0x5A
-    stb r0, [value8]
+    li r1, 0x90
+    stb r1, [value8]
 
     li r0, 0
     ldb r0, [value8]
-    #TEST(0x5A)
+    #TEST(0x90)
+
+    li r0, 0
+    ldbs r0, [value8]
+    #TEST(-112)
 
     # Halfword
 
-    li r0, 0x1234
-    sth r0, [value16]
+    li r1, 0x8234
+    sth r1, [value16]
 
     li r0, 0
     ldh r0, [value16]
-    #TEST(0x1234)
+    #TEST(0x8234)
+
+    li r0, 0
+    ldhs r0, [value16]
+    #TEST(-0x7dcc)
+
+    # @TODO Consider testing 0x8234 on 16-bit cpu when sign extending halfword load.
+    #    It should return correct result while on 32/64 it should be incorrect.
 
 
     #TEST_POST

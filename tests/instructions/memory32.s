@@ -11,13 +11,16 @@ main:
 
     # Long
 
-    li r0, 0x12345678
+    li r0, 0x82345678
     stl r0, [value32]
 
     li r0, 0
     ldl r0, [value32]
-    #TEST(0x12345678)
+    #TEST(0x82345678)
 
+    li r0, 0
+    ldls r0, [value32]
+    #TEST(-0x7dcba988)
 
     #TEST_POST
     hlt

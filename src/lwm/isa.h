@@ -169,10 +169,10 @@ typedef enum {
     COND_LE,
     COND_GT,
     COND_GE,
-    COND_A,
-    COND_AE,
     COND_B,
     COND_BE,
+    COND_A,
+    COND_AE,
 } ConditionKind;
 
 
