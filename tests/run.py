@@ -6,10 +6,27 @@ LWM = "bin/lwm"
 
 ROOT = os.path.dirname(os.path.dirname(__file__)).replace('\\','/')
 
+TEST_CONFIGS = {
+    "all": [
+        "tests/configs/lwm16.cfg",
+        "tests/configs/lwm32.cfg",
+        "tests/configs/lwm64.cfg",
+    ],
+    "min_lwm32": [
+        "tests/configs/lwm32.cfg",
+        "tests/configs/lwm64.cfg",
+    ],
+    "min_lwm64": [
+        "tests/configs/lwm64.cfg",
+    ],
+}
+
+
 def collect_tests():
     tests = []
     for test_dir in glob.glob(f"{ROOT}/tests/instructions/*"):
-        tests.append(test_dir)
+        if not os.path.basename(test_dir).startswith("_"):
+            tests.append(test_dir)
     return tests
 
 class FailException:
@@ -33,6 +50,7 @@ def cmd(c: str, silent: bool = False):
     # return proc.returncode
 
 
+# Unused at the moment
 def run_stdout_test(test_dir):
     print(f"Running {test_dir}")
 
@@ -79,31 +97,53 @@ def run_test(test_dir):
     # c_files = glob.glob(f"{test_dir}/*.c", recursive=True)
 
     name = os.path.basename(test_dir)
-    
-    proc = subprocess.run(shlex.split(f"{LWM} {test_dir} -e -q"), text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
-    out_text = proc.stdout.strip()
+    with open(test_dir, "r") as f:
+        source_text = f.read()
 
-    coverage = re.search(r'Test coverage: (\d+)/(\d+)', out_text)
-    result = re.search(r'Test result: (\d+)/(\d+)', out_text)
-
-    failed = coverage is None or result is None or len(coverage.groups()) != 2 or len(result.groups()) != 2
-    if not failed:
-        failed = int(coverage.groups()[0]) != int(coverage.groups()[1]) or int(result.groups()[0]) != int(result.groups()[1])
-
-    if failed:
-        print("\033[31mFAILED\033[0m", name)
-        print("--- stdout ---")
-        print(out_text)
+    m = re.search(r'TEST_CONFIG = ([\w\d_]+)', source_text)
+    if m is None or len(m.groups()) <= 0:
+        print(f"\033[31mFAILED\033[0m {test_dir} is missing TEST_CONFIG")
         return False
     
-    print("\033[32mPASSED\033[0m", name)
-    verbose = False
-    if verbose:
-        print("--- stdout ---")
-        print(out_text)
+    testConfig = m.groups()[0]
+    if testConfig not in TEST_CONFIGS:
+        print(f"\033[31mFAILED\033[0m Test config '{m.groups()[0]}' could not be found.")
+        return False
+    
+    anyFailure = False
 
-    return True
+    configs = TEST_CONFIGS[testConfig]
+    for platformConfig in configs:
+        basePlatformConfig = os.path.basename(platformConfig)
+        if not os.path.exists(platformConfig):
+            print(f"\033[31mFAILED\033[0m {platformConfig} ({m.groups()[0]}) could not be found.")
+            return False
+        proc = subprocess.run(shlex.split(f"{LWM} {test_dir} -e -q -p {platformConfig}"), text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+        out_text = proc.stdout.strip()
+
+        coverage = re.search(r'Test coverage: (\d+)/(\d+)', out_text)
+        result = re.search(r'Test result: (\d+)/(\d+)', out_text)
+
+        failed = coverage is None or result is None or len(coverage.groups()) != 2 or len(result.groups()) != 2
+        if not failed:
+            failed = int(coverage.groups()[0]) != int(coverage.groups()[1]) or int(result.groups()[0]) != int(result.groups()[1])
+
+        if failed:
+            print(f"\033[31mFAILED\033[0m {name} {basePlatformConfig}")
+            print("--- stdout ---")
+            print(out_text)
+            anyFailure = True
+            continue
+        
+        print(f"\033[32mPASSED\033[0m {name} {basePlatformConfig}")
+        verbose = False
+        if verbose:
+            print("--- stdout ---")
+            print(out_text)
+
+    return not anyFailure
 
 def clean_tests(test_dirs):
     for d in test_dirs:
@@ -139,7 +179,7 @@ def main(args):
 
     tests = all_tests
     if len(tests_to_run) != 0:
-        tests = [ t for t in all_tests if t in tests_to_run ]
+        tests = [ t for t in all_tests if any([ar for ar in tests_to_run if ar in t]) ]
         if len(tests) == 0:
             print("ERROR: Test case arguments matched no tests.")
             print(f"  Arguments: {tests_to_run}")

@@ -1,3 +1,6 @@
+/*
+    TEST_CONFIG = all
+*/
 
 #include "tests/test_pre.s"
 

@@ -16,5 +16,7 @@ bin
 int
 sandbox
 
+env.sh
+
 
 .vscode

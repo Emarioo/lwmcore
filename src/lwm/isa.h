@@ -68,6 +68,10 @@ typedef enum {
     OPCODE_LI16,
     OPCODE_LI32,
     OPCODE_LI64,
+    OPCODE_LIS8,
+    OPCODE_LIS16,
+    OPCODE_LIS32,
+    OPCODE_LIS64,
     // [ opcode 3 | reg 5 ]
     OPCODE_CALL_REG,
     OPCODE_JMP_REG,

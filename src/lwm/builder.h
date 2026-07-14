@@ -36,6 +36,10 @@ void emit_li8(Builder* builder, int reg0, uint8_t imm);
 void emit_li16(Builder* builder, int reg1, uint16_t imm);
 void emit_li32(Builder* builder, int reg2, uint32_t imm);
 void emit_li64(Builder* builder, int reg3, uint64_t imm);
+void emit_lis8(Builder* builder, int reg0, uint8_t imm);
+void emit_lis16(Builder* builder, int reg1, uint16_t imm);
+void emit_lis32(Builder* builder, int reg2, uint32_t imm);
+void emit_lis64(Builder* builder, int reg3, uint64_t imm);
 
 void emit_call_reg(Builder* builder, int reg0);
 void emit_jmp_reg(Builder* builder, int reg0);

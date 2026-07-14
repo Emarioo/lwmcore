@@ -72,6 +72,50 @@ void emit_li64(Builder* builder, int reg0, uint64_t imm) {
     APPEND_BYTES(bytes);
 }
 
+void emit_lis8(Builder* builder, int reg0, uint8_t imm) {
+    uint8_t bytes[] = {
+        OPCODE_LIS8,
+        reg0,
+        imm,
+    };
+    APPEND_BYTES(bytes);
+}
+void emit_lis16(Builder* builder, int reg0, uint16_t imm) {
+    uint8_t bytes[] = {
+        OPCODE_LIS16,
+        reg0,
+        (imm >> 0) & 0xFF,
+        (imm >> 8) & 0xFF,
+    };
+    APPEND_BYTES(bytes);
+}
+void emit_lis32(Builder* builder, int reg0, uint32_t imm) {
+    uint8_t bytes[] = {
+        OPCODE_LIS32,
+        reg0,
+        (imm >>  0) & 0xFF,
+        (imm >>  8) & 0xFF,
+        (imm >> 16) & 0xFF,
+        (imm >> 24) & 0xFF,
+    };
+    APPEND_BYTES(bytes);
+}
+void emit_lis64(Builder* builder, int reg0, uint64_t imm) {
+    uint8_t bytes[] = {
+        OPCODE_LIS64,
+        reg0,
+        (imm >>  0) & 0xFF,
+        (imm >>  8) & 0xFF,
+        (imm >> 16) & 0xFF,
+        (imm >> 24) & 0xFF,
+        (imm >> 32) & 0xFF,
+        (imm >> 40) & 0xFF,
+        (imm >> 48) & 0xFF,
+        (imm >> 56) & 0xFF,
+    };
+    APPEND_BYTES(bytes);
+}
+
 #define EMIT_REG1(opcode) \
     uint8_t bytes[] = {   \
         opcode,           \

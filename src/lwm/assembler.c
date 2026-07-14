@@ -779,6 +779,7 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
             inst.operands[1].immediate = 0xF000;
         }
         else CASE_OPCODE("li", OPCODE_LI64)
+        else CASE_OPCODE("lis", OPCODE_LIS64)
         else CASE_OPCODE("call", OPCODE_CALL)
         else CASE_OPCODE("jmp", OPCODE_JMP)
         else CASE_OPCODE("jz", OPCODE_JZ)
@@ -843,6 +844,25 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
         else CASE_OPCODE("rdtick", OPCODE_RDTICK)
         else {
             ERROR_SRC_RET(location_head, "Unknown instruction '%s'\n", name.ptr);
+        }
+
+        if (inst.opcode >= OPCODE_LI8 && inst.opcode <= OPCODE_LI64) {
+            // We always use 'lis' for negative numbers.
+            if (inst.operands[1].immediate >> 63) {
+                inst.opcode = OPCODE_LIS8 + (inst.opcode - OPCODE_LI8);
+            }
+        }
+        if (inst.opcode == OPCODE_CALL) {
+            Operand* labelOperand = &inst.operands[0];
+            if (!labelOperand->label.len) {
+                inst.opcode == OPCODE_CALL_REG;
+            }
+        }
+        if (inst.opcode == OPCODE_JMP) {
+            Operand* labelOperand = &inst.operands[0];
+            if (!labelOperand->label.len) {
+                inst.opcode == OPCODE_JMP_REG;
+            }
         }
         
         Section* currentSection = &context->sections[context->sections_len-1];
@@ -1005,30 +1025,34 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                 case OPCODE_LI16:
                 case OPCODE_LI32:
                 case OPCODE_LI64:
-                 {
-                    if (inst->operands[1].immediate >> 63) {
-                        // Signed
-                        int64_t imm = inst->operands[1].immediate;
-                        if (imm >= -0x80) {
-                            emit_li8(builder, inst->operands[0].regnum, imm);
-                        } else if (imm >= -0x8000) {
-                            emit_li16(builder, inst->operands[0].regnum, imm);
-                        } else if (imm >= -0x80000000) {
-                            emit_li32(builder, inst->operands[0].regnum, imm);
-                        } else {
-                            emit_li64(builder, inst->operands[0].regnum, imm);
-                        }
+                {
+                    uint64_t imm = inst->operands[1].immediate;
+                    if (imm <= 0xFF) {
+                        emit_li8(builder, inst->operands[0].regnum, imm);
+                    } else if (imm <= 0xFFFF) {
+                        emit_li16(builder, inst->operands[0].regnum, imm);
+                    } else if (imm <= 0xFFFFFFFF) {
+                        emit_li32(builder, inst->operands[0].regnum, imm);
                     } else {
-                        uint64_t imm = inst->operands[1].immediate;
-                        if (imm < 0x80) {
-                            emit_li8(builder, inst->operands[0].regnum, imm);
-                        } else if (imm < 0x8000) {
-                            emit_li16(builder, inst->operands[0].regnum, imm);
-                        } else if (imm < 0x80000000) {
-                            emit_li32(builder, inst->operands[0].regnum, imm);
-                        } else {
-                            emit_li64(builder, inst->operands[0].regnum, imm);
-                        }
+                        emit_li64(builder, inst->operands[0].regnum, imm);
+                    }
+                    // }
+                } break;
+                case OPCODE_LIS8:
+                case OPCODE_LIS16:
+                case OPCODE_LIS32:
+                case OPCODE_LIS64:
+                {
+                    // Signed
+                    int64_t imm = inst->operands[1].immediate;
+                    if (imm >= -0x80 && imm < 0x80) {
+                        emit_lis8(builder, inst->operands[0].regnum, imm);
+                    } else if (imm >= -0x8000 && imm < 0x8000) {
+                        emit_lis16(builder, inst->operands[0].regnum, imm);
+                    } else if (imm >= -0x80000000 && imm < 0x80000000) {
+                        emit_lis32(builder, inst->operands[0].regnum, imm);
+                    } else {
+                        emit_lis64(builder, inst->operands[0].regnum, imm);
                     }
                 } break;
                 case OPCODE_CALL_REG: {

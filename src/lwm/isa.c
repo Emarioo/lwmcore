@@ -36,9 +36,13 @@ void cr_to_string(int reg, char regname[20]) {
 int largest_encoding_ext(int opcode, AddressingForm form, int* lowestBytes) {
 
     switch ((OpcodeKind)opcode) {
-        case OPCODE_LI8:        return 3;
+        case OPCODE_LI8:
+        case OPCODE_LIS8:        return 3;
+        case OPCODE_LIS16:
         case OPCODE_LI16:       return 4;
+        case OPCODE_LIS32:
         case OPCODE_LI32:       return 6;
+        case OPCODE_LIS64:
         case OPCODE_LI64:       *lowestBytes = 3; return 10;
         case OPCODE_CALL_REG:
         case OPCODE_JMP_REG:
@@ -138,10 +142,14 @@ int largest_encoding_ext(int opcode, AddressingForm form, int* lowestBytes) {
 const char* opcode_to_string(int opcode) {
     #define CASE(X, N) case X: return N;
     switch ((OpcodeKind)opcode) {
-        CASE(OPCODE_LI8, "li8")
-        CASE(OPCODE_LI16, "li16")
-        CASE(OPCODE_LI32, "li32")
-        CASE(OPCODE_LI64, "li64")
+        CASE(OPCODE_LI8,   "li8")
+        CASE(OPCODE_LI16,  "li16")
+        CASE(OPCODE_LI32,  "li32")
+        CASE(OPCODE_LI64,  "li64")
+        CASE(OPCODE_LIS8,  "lis8")
+        CASE(OPCODE_LIS16, "lis16")
+        CASE(OPCODE_LIS32, "lis32")
+        CASE(OPCODE_LIS64, "lis64")
         CASE(OPCODE_CALL_REG, "call_reg")
         CASE(OPCODE_JMP_REG, "jmp_reg")
         CASE(OPCODE_PUSH, "push")

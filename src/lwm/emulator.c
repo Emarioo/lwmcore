@@ -269,14 +269,25 @@ int decode_form_reg1_imm(CoreState* core, uint64_t pc, uint32_t opcodeBase, uint
 
     int immediateSize = 1 << (tmp_opcode - opcodeBase);
 
-    if (immediateSize == 1)
-        *immediate = (int64_t)(int8_t)READ8(pc + 2);
-    else if (immediateSize == 2)
-        *immediate = (int64_t)(int16_t)READ16(pc + 2);
-    else if (immediateSize == 4)
-        *immediate = (int64_t)(int32_t)READ32(pc + 2);
-    else if (immediateSize == 8)
-        *immediate = (int64_t)READ64(pc + 2);
+    if (opcodeBase == OPCODE_LIS8) {
+        if (immediateSize == 1)
+            *immediate = (int64_t)(int8_t)READ8(pc + 2);
+        else if (immediateSize == 2)
+            *immediate = (int64_t)(int16_t)READ16(pc + 2);
+        else if (immediateSize == 4)
+            *immediate = (int64_t)(int32_t)READ32(pc + 2);
+        else if (immediateSize == 8)
+            *immediate = (int64_t)READ64(pc + 2);
+    } else {
+        if (immediateSize == 1)
+            *immediate = (uint64_t)(uint8_t)READ8(pc + 2);
+        else if (immediateSize == 2)
+            *immediate = (uint64_t)(uint16_t)READ16(pc + 2);
+        else if (immediateSize == 4)
+            *immediate = (uint64_t)(uint32_t)READ32(pc + 2);
+        else if (immediateSize == 8)
+            *immediate = (uint64_t)READ64(pc + 2);
+    }
 
     return 2 + immediateSize;
 }
@@ -849,9 +860,27 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
         case OPCODE_LI16:
         case OPCODE_LI32:
         case OPCODE_LI64:
+        case OPCODE_LIS8:
+        case OPCODE_LIS16:
+        case OPCODE_LIS32:
+        case OPCODE_LIS64:
         {
-            bytes = decode_form_reg1_imm(core, pc, OPCODE_LI8, NULL, regs, &immediate);
+            int opcodeBase = opcode >= OPCODE_LIS8 ? OPCODE_LIS8 : OPCODE_LI8;
+            bytes = decode_form_reg1_imm(core, pc, opcodeBase, NULL, regs, &immediate);
             check_registers(core, regs, 1);
+
+            if (opcode == OPCODE_LI32 && core->mode < MODE_32) {
+                // if (!emulator->platformConfig->quiet) {
+                printf("Exception ILLEGAL instruction at 0x%zx. li32 not available in 16-bit mode\n", pc);
+                // }
+                emulator_trigger_exception(core, VECTOR_ILLEGAL_INSTRUCTION);
+            }
+            if (opcode == OPCODE_LI64 && core->mode < MODE_64) {
+                // if (!emulator->platformConfig->quiet) {
+                printf("Exception ILLEGAL instruction at 0x%zx. li64 not available in 16 or 32-bit mode\n", pc);
+                // }
+                emulator_trigger_exception(core, VECTOR_ILLEGAL_INSTRUCTION);
+            }
 
             // @TODO If we load 8-bit integer we may want to sign extend it.
             //   Does this instruction have flag to sign extend
@@ -1041,6 +1070,8 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
             bytes = decode_form_reg1(core, pc, NULL, regs);
             check_registers(core, regs, 1);
 
+            // @TODO Misaligned fault?
+
             // printf("push/pop[%d]  %d 0x%x\n", opcode, regs[0], (int)pc);
             
             if (opcode == OPCODE_PUSH) {
@@ -1221,6 +1252,23 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
             int64_t displacement;
             bytes = decode_form_memory(core, pc, NULL, regs, &addressingForm, &displacement);
             check_registers(core, regs, 4);
+
+            if ((opcode == OPCODE_LDL || opcode == OPCODE_LDLS || opcode == OPCODE_STL)
+                && core->mode < MODE_32) {
+                // if (!emulator->platformConfig->quiet) {
+                printf("Exception ILLEGAL instruction at 0x%zx. store/load long not available in 16-bit mode\n", pc);
+                // }
+                emulator_trigger_exception(core, VECTOR_ILLEGAL_INSTRUCTION);
+            }
+            if ((opcode == OPCODE_LDQ || opcode == OPCODE_STQ) && core->mode < MODE_64) {
+                // if (!emulator->platformConfig->quiet) {
+                printf("Exception ILLEGAL instruction at 0x%zx. store/load quad not available in 16 or 32-bit mode\n", pc);
+                // }
+                emulator_trigger_exception(core, VECTOR_ILLEGAL_INSTRUCTION);
+            }
+
+            // @TODO Certain addressing forms such as 64-bit absolute should not be allowed in 16-bit mode.
+            //   We need to decide which ones and put it into ISA. We need to put info that li64 not available in 16-bit mode too.
 
             uint64_t result;
             uint64_t address;

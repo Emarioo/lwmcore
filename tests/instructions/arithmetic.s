@@ -1,3 +1,7 @@
+/*
+    TEST_CONFIG = all
+*/
+
 #include "tests/test_pre.s"
 
 section .text 0x0
@@ -51,7 +55,7 @@ main:
     li r0, -65
     li r1, 9
     smod r0, r0, r1
-    #TEST(-2)
+    #TEST(7)
 
     // Shift left
     li r0, 1
@@ -86,7 +90,7 @@ main:
     // NOT
     li r0, 0x0100
     not r0, r0
-    #TEST(0xFEFF)
+    #TEST(-257)
 
     #TEST_POST
     hlt
