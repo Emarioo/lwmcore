@@ -12,6 +12,11 @@
     li r2, #counter
     call test_eq
 #endmacro
+#define TEST_NE(VALUE)
+    li r1, %VALUE%
+    li r2, #counter
+    call test_ne
+#endmacro
 
 #define TEST_POST()
     call test_finish

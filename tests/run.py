@@ -21,6 +21,7 @@ TEST_CONFIGS = {
     ],
 }
 
+VERBOSE = False
 
 def collect_tests():
     tests = []
@@ -29,7 +30,7 @@ def collect_tests():
             tests.append(test_dir)
     return tests
 
-class FailException:
+class FailException(BaseException):
     def __init__(self):
         pass
 
@@ -138,8 +139,7 @@ def run_test(test_dir):
             continue
         
         print(f"\033[32mPASSED\033[0m {name} {basePlatformConfig}")
-        verbose = False
-        if verbose:
+        if VERBOSE:
             print("--- stdout ---")
             print(out_text)
 
@@ -152,9 +152,10 @@ def clean_tests(test_dirs):
             shutil.rmtree(INT)
 
 def main(args):
-    
+    global VERBOSE
     tests_to_run = []
     should_clean_tests = False
+    verbose = False
     argi = 1
     while argi < len(args):
         arg = args[argi]
@@ -166,6 +167,9 @@ def main(args):
             exit(0)
         elif arg == '--clean' or arg == '-c':
             should_clean_tests = True
+        elif arg == '-v' or arg == '--verbose':
+            verbose = True
+            VERBOSE = True
         elif arg[0] == '-':
             print(f"\033[31mERROR:\033[0m Unknown flag '{arg}'")
             exit(1)
@@ -206,5 +210,8 @@ def main(args):
 
 
 if __name__ == "__main__":
-    main(sys.argv)
+    try:
+        main(sys.argv)
+    except KeyboardInterrupt as ex:
+        pass
 

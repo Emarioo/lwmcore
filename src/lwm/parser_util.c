@@ -413,7 +413,17 @@ SourceLocation get_location(ParserContext* context, int inout_head) {
             break;
         }
     }
-    Assert(foundSpan);
+    if (!foundSpan) {
+        int i=context->spans_len-1;
+        SourceSpan* span = &context->spans[i];
+        foundSpan = span;
+        while (span->file[0] == '<') {
+            i--;
+            Assert(i>=0);
+            span = &context->spans[i];
+        }
+        foundRealSpan = span;
+    }
 
     char* buffer;
     size_t buffer_size;
@@ -539,9 +549,15 @@ bool preprocess_text(ParserContext* context, const string in_text, string* out_t
     int head = 0;
     int parsedChars;
 
-    context->spans_len = 0;
+    context->spans_len = 1;
     context->spans_max = 200;
     context->spans = malloc(sizeof(SourceSpan) * context->spans_max);
+
+    context->spans[0].file = sourcePath;
+    context->spans[0].src_start = 0;
+    context->spans[0].src_end = 0;
+    context->spans[0].dst_start = 0;
+    context->spans[0].dst_end = 0;
 
 
     int              includeStack_len = 0;
@@ -774,7 +790,7 @@ bool preprocess_text(ParserContext* context, const string in_text, string* out_t
         }
 
         if (!foundMacro) {
-            ERROR_SRC_RET(head, "Not a defined macro.\n");
+            ERROR_SRC_RET(head, "'%s' is not a defined macro.\n", macroName.ptr);
         }
 
         typedef struct {

@@ -17,6 +17,16 @@ msg_passed:
 msg_failed:
     byte[] "FAILED #\0"
 
+test_ne:
+    push lr
+    push r3
+
+    li r3, 1
+    stb r3, [coverage_vector + r2]
+    xadd r3, [total_tests]
+    jeq r0, r1, test_eq_failure
+    jmp test_eq_success
+
 test_eq:
     push lr
     push r3
@@ -24,20 +34,21 @@ test_eq:
     li r3, 1
     stb r3, [coverage_vector + r2]
     xadd r3, [total_tests]
-    jne r0, r1, .failure
+    jne r0, r1, test_eq_failure
+test_eq_success:
 
     xadd r3, [passed_tests]
     mov r3, r0
     lea r0, [msg_passed]
       call putstring
 
-    jmp .end
-.failure:
+    jmp test_eq_end
+test_eq_failure:
     mov r3, r0
     lea r0, [msg_failed]
       call putstring
 
-.end:
+test_eq_end:
     mov r0, r2
       call putint
     li r0, ' '
