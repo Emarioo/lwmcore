@@ -8,7 +8,7 @@ BlotterData* decompose_blotter_file(string path) {
     FILE* file = fopen(path.ptr, "rb");
     if(!file) {
         error("Could not read '%s'\n", path.ptr);
-        return nullptr;
+        return NULL;
     }
     fseek(file, 0, SEEK_END);
     int filesize = ftell(file);
@@ -24,7 +24,7 @@ BlotterData* decompose_blotter_file(string path) {
 BlotterData* decompose_blotter_data(string data, const char* source_path) {
     if(data.len < 16) {
         error("File '%s' is corrupt! (to few bytes, %d)\n", source_path, data.len);
-        return nullptr;
+        return NULL;
     }
 
     // TODO: Handle sudden EOF everywhere.
@@ -38,16 +38,16 @@ BlotterData* decompose_blotter_data(string data, const char* source_path) {
 
     if(memcmp(header->magic, "Logic World save", 16)) {
         error("File '%s' is corrupt! (bad header)\n", source_path);
-        return nullptr;
+        return NULL;
     }
     if(memcmp((char*)footer, "redstone sux lol", 16)) {
         error("File '%s' is corrupt! (bad footer)\n", source_path);
-        return nullptr;
+        return NULL;
     }
 
     if(header->save_format_version != 7) {
         error("Can't handle save version %d. Only 7.\n", (int)header->save_format_version);
-        return nullptr;
+        return NULL;
     }
 
     // #define LOG(F, ...) printf(F, ##__VA_ARGS__);
@@ -62,7 +62,7 @@ BlotterData* decompose_blotter_data(string data, const char* source_path) {
         case LW_SAVE_TYPE_SUBASSEMBLY: save_type = "Subassembly"; break;
         default:
             error("Expected save type 1 or 2 but got %d\n", (int)header->save_type);
-            return nullptr;
+            return NULL;
     }
     LOG("Save type: %s\n", save_type);
 
@@ -219,7 +219,7 @@ BlotterData* decompose_blotter_data(string data, const char* source_path) {
         warning("%d bytes was not processed at the end '%s'.\n", data.len-16-head, source_path);
     }
 
-    return nullptr;
+    return NULL;
 }
 
 void write_subassembly() {
@@ -450,7 +450,7 @@ bool modify_rom_subassembly(string bin_data, string* rom_data) {
 
     if(data.len < 16) {
         error("File '%s' is corrupt! (to few bytes, %d)\n", source_path, data.len);
-        return nullptr;
+        return NULL;
     }
     #undef LOG
     // #define LOG(F, ...) printf(F, ##__VA_ARGS__);
@@ -469,16 +469,16 @@ bool modify_rom_subassembly(string bin_data, string* rom_data) {
 
     if(memcmp(header->magic, "Logic World save", 16)) {
         error("File '%s' is corrupt! (bad header)\n", source_path);
-        return nullptr;
+        return NULL;
     }
     if(memcmp((char*)footer, "redstone sux lol", 16)) {
         error("File '%s' is corrupt! (bad footer)\n", source_path);
-        return nullptr;
+        return NULL;
     }
 
     if(header->save_format_version != 7) {
         error("Can't handle save version %d. Only 7.\n", (int)header->save_format_version);
-        return nullptr;
+        return NULL;
     }
     
     // nocheckin LOGGING
@@ -490,7 +490,7 @@ bool modify_rom_subassembly(string bin_data, string* rom_data) {
         case LW_SAVE_TYPE_SUBASSEMBLY: save_type = "Subassembly"; break;
         default:
             error("Expected save type 1 or 2 but got %d\n", (int)header->save_type);
-            return nullptr;
+            return NULL;
     }
     LOG("Save type: %s\n", save_type);
 

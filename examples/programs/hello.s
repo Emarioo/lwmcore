@@ -1,5 +1,6 @@
 
-#define UART 0xFFF4
+#define EMU_HALT     0xF000
+#define EMU_OUT      0xF004
 
 section .data 0x20
 
@@ -17,8 +18,9 @@ beg:
     add r1, r1, r0
     jmp beg
 end:
-    wfi
+    stb r0, [#EMU_HALT]
+    // The pseudo instruction 'hlt' can be used instead
 
 putchar:
-    stb r0, [#UART] 
+    stb r0, [#EMU_OUT] 
     ret

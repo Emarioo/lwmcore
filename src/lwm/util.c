@@ -37,7 +37,7 @@ int find_string(string text, const char* str) {
 bool create_folder(string path) {
     #ifdef _WIN32
         // TODO: Make necessary parent directories
-        BOOL res = CreateDirectoryA(path.ptr, nullptr);
+        BOOL res = CreateDirectoryA(path.ptr, NULL);
         if(!res) {
             DWORD err = GetLastError();
             if (err != ERROR_ALREADY_EXISTS) {

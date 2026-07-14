@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 
-import os, sys, subprocess, glob, shlex, shutil, platform
+import os, sys, subprocess, glob, shlex, shutil, platform, re
 
-LWM = "lwm"
+LWM = "bin/lwm"
 
 ROOT = os.path.dirname(os.path.dirname(__file__)).replace('\\','/')
 
 def collect_tests():
     tests = []
-    for test_dir in glob.glob(f"{ROOT}/tests/programs/*"):
+    for test_dir in glob.glob(f"{ROOT}/tests/instructions/*"):
         tests.append(test_dir)
     return tests
 
@@ -33,39 +33,7 @@ def cmd(c: str, silent: bool = False):
     # return proc.returncode
 
 
-def compile_native_program(output_file, files, flags):
-    INT = f"{ROOT}/int"
-    os.makedirs(INT, exist_ok=True)
-    os.makedirs(os.path.dirname(output_file), exist_ok=True)
-
-    # COMMON_FLAGS = f"-g -I{ROOT}/include -I{ROOT}/src"
-    # EXE = f"{output_path}/barf{'.exe' if platform.system()=="Windows" else ''}"
-
-    OBJECTS = [ INT + "/" + os.path.basename(f).replace('.c', '.o') for f in files ]
-
-    if platform.system() == "Windows":
-        flags += " -DOS_WINDOWS"
-    if platform.system() == "Linux":
-        flags += " -DOS_LINUX"
-
-    for obj, src in zip(OBJECTS, files):
-        cmd(f"gcc -c {flags} {src} -o {obj}")
-
-    cmd(f"gcc {flags} -o {output_file} {ROOT}/src/platform/platform.c {' '.join(OBJECTS)}")
-    
-    
-def compile_artifact(output_file, files, flags):
-    INT = f"{ROOT}/int"
-    os.makedirs(INT, exist_ok=True)
-    os.makedirs(os.path.dirname(os.path.abspath(output_file)), exist_ok=True)
-    OBJECTS = [ INT + "/" + os.path.basename(f).replace('.c', '-ba.o') for f in files ]
-
-    for obj, src in zip(OBJECTS, files):
-        cmd(f"gcc -c {flags} {src} -o {obj}")
-    
-    cmd(f"barf -c -o {output_file} {' '.join(OBJECTS)}")
-
-def run_test(test_dir):
+def run_stdout_test(test_dir):
     print(f"Running {test_dir}")
 
     # c_files = glob.glob(f"{test_dir}/*.c", recursive=True)
@@ -102,6 +70,39 @@ def run_test(test_dir):
         return False
 
     print("\033[32mPASSED\033[0m", name)
+    return True
+
+
+def run_test(test_dir):
+    # print(f"Running {test_dir}")
+
+    # c_files = glob.glob(f"{test_dir}/*.c", recursive=True)
+
+    name = os.path.basename(test_dir)
+    
+    proc = subprocess.run(shlex.split(f"{LWM} {test_dir} -e -q"), text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+    out_text = proc.stdout.strip()
+
+    coverage = re.search(r'Test coverage: (\d+)/(\d+)', out_text)
+    result = re.search(r'Test result: (\d+)/(\d+)', out_text)
+
+    failed = coverage is None or result is None or len(coverage.groups()) != 2 or len(result.groups()) != 2
+    if not failed:
+        failed = int(coverage.groups()[0]) != int(coverage.groups()[1]) or int(result.groups()[0]) != int(result.groups()[1])
+
+    if failed:
+        print("\033[31mFAILED\033[0m", name)
+        print("--- stdout ---")
+        print(out_text)
+        return False
+    
+    print("\033[32mPASSED\033[0m", name)
+    verbose = False
+    if verbose:
+        print("--- stdout ---")
+        print(out_text)
+
     return True
 
 def clean_tests(test_dirs):

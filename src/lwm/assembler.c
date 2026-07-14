@@ -778,7 +778,7 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
             inst.operands[1].form = ADDRESSING_ABS16;
             inst.operands[1].immediate = 0xF000;
         }
-        else CASE_OPCODE("li", OPCODE_LI8)
+        else CASE_OPCODE("li", OPCODE_LI64)
         else CASE_OPCODE("call", OPCODE_CALL)
         else CASE_OPCODE("jmp", OPCODE_JMP)
         else CASE_OPCODE("jz", OPCODE_JZ)
@@ -1020,11 +1020,11 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                         }
                     } else {
                         uint64_t imm = inst->operands[1].immediate;
-                        if (imm <= 0xFF) {
+                        if (imm < 0x80) {
                             emit_li8(builder, inst->operands[0].regnum, imm);
-                        } else if (imm <= 0xFFFF) {
+                        } else if (imm < 0x8000) {
                             emit_li16(builder, inst->operands[0].regnum, imm);
-                        } else if (imm <= 0xFFFFFFFF) {
+                        } else if (imm < 0x80000000) {
                             emit_li32(builder, inst->operands[0].regnum, imm);
                         } else {
                             emit_li64(builder, inst->operands[0].regnum, imm);
@@ -1148,7 +1148,7 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                 } break;
                 case OPCODE_SHL: {         EMIT_REG3(shl);
                 } break;
-                case OPCODE_SHR: {         EMIT_REG3(shl);
+                case OPCODE_SHR: {         EMIT_REG3(shr);
                 } break;
                 case OPCODE_RET: {         emit_ret(builder);
                 } break;

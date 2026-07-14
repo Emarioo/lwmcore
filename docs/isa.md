@@ -5,17 +5,18 @@ Instruction Set Architecture for LWM (Logic World Machine)
 
 The ISA is designed as a family of processors:
 
-|Family|Registers|Address Space|
+|Family|General Registers|Address Space|
 |-|-|-|
 |16-bit|16|22-bit (4 MB)|
 |32-bit|32|32-bit (4 GB)|
 |64-bit|32|48-bit (256 TB)|
 
-The base architecture supports:
+The architecture supports:
 
 - Exceptions and interrupts
 - Paging
-- Multicore
+- User space
+- Multicore and atomics
 
 Additional extensions:
 
@@ -429,7 +430,7 @@ restore r0, 0x0
 # The immediate is a mask for which extension registers to save if any.
 ```
 
-# Virtualization
+# Virtualization (WIP)
 
 How to specify multiple virtual cores. Multiple Guests on the same Host.
 
@@ -472,6 +473,8 @@ Firmware should provide these things?
 
 ## Timers
 
+The CPU has an internal timer but firmware can provide more.
+
 The programmable timer is platform hardware (MMIO).
 The timer uses compare registers.
 
@@ -509,9 +512,21 @@ Note that 16-bit CPU only has 16 registers.
 |sp|Stack pointer|
 |lr|Link register|
 |tp|Thread pointer (reserved for thread local storage)|
-|pc|Program counter|
+
+The program counter is an internal register which cannot be accessed.
+You can do the following:
+```arm
+// Jump to next instruction where we set r0 = lr = pc
+    call end
+end:
+    or r0, r0, lr
+// Or this.
+    lea r0, [end]
+```
 
 
+The control registers are modified by the kernel. It tells the CPU where to jump on interrupts and exceptions. How the page table looks like, whether
+CPU runs in user mode or paging/interrupts are enabled.
 
 |Control Register|Description|
 |-|-|
@@ -528,6 +543,7 @@ Note that 16-bit CPU only has 16 registers.
 
 # Instructions
 
+The encoding is described in a different document.
 
 |opcode|reg0|reg1|reg2|
 |-|-|-|-|

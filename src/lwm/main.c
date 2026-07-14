@@ -5,6 +5,10 @@
 #include "lwm/scheme_gen.h"
 
 
+const char* VERSION = "v0.0.1";
+const char* DATE = "2026-07-14";
+
+
 // @TODO Move these elsewhere!
 bool dev_create_emu(EmulatorContext* emulator, HardwareDevice* device);
 bool dev_create_ic(EmulatorContext* emulator, HardwareDevice* device);
@@ -13,20 +17,20 @@ bool platform_init(EmulatorContext* emulator, HardwareDevice* device);
 
 void print_help() {
     printf("Usage: lwm sample.s -o sample.bin\n");
-    printf("  -o <path>       : Path where to place output binary file.\n");
-    printf("  -e,--emulate    : Assembles and emulates the file.\n");
-    printf("  -r,--rom <path> : Assembles and writes a Logic World subassembly file.\n");
-    printf("  -f,--force      : Will overwrite user made subassembly.\n");
+    printf("  -o <path>            : Path where to place output binary file.\n");
+    printf("  -e,--emulate         : Assembles and emulates the file.\n");
+    printf("  -r,--rom <path>      : Assembles and writes a Logic World subassembly file.\n");
+    printf("  -f,--force           : Will overwrite user made subassembly.\n");
     printf("  -p,--platform-config : Config specifies CPU family (16/32/64-bit, core count, RAM size, etc.).\n");
-    printf("  -s <path>       : Generate encoder from scheme.\n");
-    printf("  --safe          : Don't write any files, log which ones would have been written to.\n");
-    printf("  -q,--quiet      : Turn off log messages.\n");
+    printf("  -s <path>            : Generate encoder from scheme.\n");
+    printf("  --safe               : Don't write any files, log which ones would have been written to.\n");
+    printf("  -q,--quiet           : Turn off log messages.\n");
 }
 
 int main(int argc, const char** argv) {
     string assembly_file = {0};
-    string bin_file = {0, nullptr};
-    string rom_file = {0, nullptr};
+    string bin_file = {0, NULL};
+    string rom_file = {0, NULL};
     const char* scheme_file = NULL;
     const char* platform_config_file = NULL;
     bool do_emulate = false;
@@ -43,21 +47,34 @@ int main(int argc, const char** argv) {
             return 0;
         } else if(!strcmp(arg, "-v") || !strcmp(arg, "--version")) {
             // TODO: Remove this at some point?
-            time_t now = time(nullptr);
+            time_t now = time(NULL);
             srand(now);
             float num = (float)rand() / (float)RAND_MAX;
-            if(num < 0.2f) {
-                // 20%
+            if(num < 0.1f) {
+                // 10%
                 printf("Hello, no version for you this time.\n");
+            } else if(num < 0.2f) {
+                // 10%
+                int head=0;
+                int len = strlen(VERSION);
+                int dotCount = 0;
+                while (head < len) {
+                    char chr = VERSION[head];
+                    head++;
+                    if (chr == '.') {
+                        dotCount++;
+                        if (dotCount == 2) {
+                            break;
+                        }
+                    }
+                }
+                printf("Hmm... I'll tell you the first two numbers: %.*sx\n", head, VERSION);
             } else if(num < 0.5f) {
                 // 30%
-                printf("Version is apparently v0.0.1\n");
-            } else if(num < 0.95f) {
-                // 45%
-                printf("Hmm... I'll tell you the first two numbers: v0.0.?\n");
+                printf("Version is apparently %s\n", VERSION);
             } else {
-                // 5%
-                printf("The version is v0.0.1 (2025-03-30)\n");
+                // 50%
+                printf("The version is %s (%s)\n", VERSION, DATE);
             }
             return 0;
         } else if(!strcmp(arg, "-e") || !strcmp(arg, "--emulate")) {
@@ -256,7 +273,7 @@ int main(int argc, const char** argv) {
             }
         } else {
             int slash_index = find_string(rom_file, "/");
-            const char* title = nullptr;
+            const char* title = NULL;
             if(slash_index == -1) {
                 // TODO: Memory leak
                 char* tmp = malloc(500);

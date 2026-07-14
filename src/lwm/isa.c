@@ -39,7 +39,7 @@ int largest_encoding_ext(int opcode, AddressingForm form, int* lowestBytes) {
         case OPCODE_LI8:        return 3;
         case OPCODE_LI16:       return 4;
         case OPCODE_LI32:       return 6;
-        case OPCODE_LI64:       return 10;
+        case OPCODE_LI64:       *lowestBytes = 3; return 10;
         case OPCODE_CALL_REG:
         case OPCODE_JMP_REG:
         case OPCODE_PUSH:

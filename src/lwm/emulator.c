@@ -989,7 +989,9 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
                 case OPCODE_UMOD: result = left % right; break;
                 case OPCODE_SMUL: result = leftSigned * rightSigned; break;
                 case OPCODE_SDIV: result = leftSigned / rightSigned; break;
-                case OPCODE_SMOD: result = leftSigned % rightSigned; break;
+                // @TODO We assume rightSigned is positive. What do we do if it isn't?
+                //    A fault like MOD_BY_NEGATIVE like how there is DIV_BY_ZERO? We would combine into MATH_FAULT and then provide info in error code.
+                case OPCODE_SMOD: result = ((leftSigned % rightSigned) + rightSigned) % rightSigned ; break;
                 case OPCODE_AND:  result = left & right; break;
                 case OPCODE_OR:   result = left | right; break;
                 case OPCODE_XOR:  result = left ^ right; break;

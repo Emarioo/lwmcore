@@ -398,8 +398,8 @@ int parse_line(ParserContext* context, int* inout_head) {
 
 
 SourceLocation get_location(ParserContext* context, int inout_head) {
-    SourceSpan* foundSpan = nullptr;
-    SourceSpan* foundRealSpan = nullptr;
+    SourceSpan* foundSpan = NULL;
+    SourceSpan* foundRealSpan = NULL;
     for(int i=0;i<context->spans_len;i++) {
         SourceSpan* span = &context->spans[i];
         if(inout_head >= span->dst_start && inout_head < span->dst_end) {
