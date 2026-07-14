@@ -25,9 +25,11 @@ typedef struct {
     char* text;
     int   text_len;
 
+    int         labelFixups_max;
     int         labelFixups_len;
     LabelFixup* labelFixups;
     
+    int      sections_max;
     int      sections_len;
     Section* sections;
 
@@ -92,6 +94,7 @@ bool find_label(AssemblerContext* context, const char* name, Section** out_secti
 }
 
 LabelFixup* create_fixup(AssemblerContext* context, Instruction* inst, Operand* labelOperand) {
+    Assert(context->labelFixups_len + 1 <= context->labelFixups_max);
     LabelFixup* fixup = &context->labelFixups[context->labelFixups_len];
     context->labelFixups_len++;
 
@@ -125,6 +128,7 @@ LabelFixup* create_fixup(AssemblerContext* context, Instruction* inst, Operand* 
 }
 
 LabelFixup* create_fixup_abs(AssemblerContext* context, int head, uintptr_t address, string name, int size) {
+    Assert(context->labelFixups_len + 1 <= context->labelFixups_max);
     LabelFixup* fixup = &context->labelFixups[context->labelFixups_len];
     context->labelFixups_len++;
 
@@ -144,6 +148,7 @@ LabelFixup* create_fixup_abs(AssemblerContext* context, int head, uintptr_t addr
 
 void prefix_namespace(string* name, const string namespace) {
     name->ptr = realloc(name->ptr, name->len + 1 + namespace.len + 1);
+    Assert(name->ptr);
     memcpy(name->ptr + namespace.len + 1, name->ptr, name->len);
     memcpy(name->ptr, namespace.ptr, namespace.len);
     name->ptr[namespace.len] = '.';
@@ -179,9 +184,9 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
     context->parserContext.text_len = text_len;
 
     context->sections_len = 0;
-    int max_sections = 20;
-    context->sections = malloc(sizeof(Section) * max_sections);
-    memset(context->sections, 0, sizeof(Section) * max_sections);
+    context->sections_max = 20;
+    context->sections = malloc(sizeof(Section) * context->sections_max);
+    memset(context->sections, 0, sizeof(Section) * context->sections_max);
 
     int jmpResult = setjmp(context->jumpBuffer);
     if (jmpResult != 0) {
@@ -189,6 +194,7 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
     }
 
     {
+        Assert(context->sections_len+1 <= context->sections_max);
         SourceLocation loc = count_lines(context, 0);
         Section* section = &context->sections[context->sections_len];
         section->addr = 0;
@@ -336,6 +342,7 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                             if (elementCount + str.len > max_count) {
                                 int newMax = max_count * 2 + 10;
                                 void* newPtr = realloc(bytes, newMax * data_bytes);
+                                Assert(newPtr);
                                 memset((char*)newPtr + max_count * data_bytes, 0, (newMax - max_count) * data_bytes);
                                 bytes = newPtr;
                                 max_count = newMax;
@@ -376,6 +383,7 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                         if (elementCount + 1 > max_count) {
                             int newMax = max_count * 2 + 10;
                             void* newPtr = realloc(bytes, newMax * data_bytes);
+                            Assert(newPtr);
                             memset((char*)newPtr + max_count * data_bytes, 0, (newMax - max_count) * data_bytes);
                             bytes = newPtr;
                             max_count = newMax;
@@ -468,6 +476,7 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
             context->sections[context->sections_len-1].size = estimated_addressHigh;
 
             // Create new block and set its address
+            Assert(context->sections_len+1 <= context->sections_max);
             SourceLocation loc = count_lines(context, head);
             Section* section = &context->sections[context->sections_len];
             section->location = loc;
@@ -601,7 +610,8 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                 }
             }
             if (!parsed_chars) {
-                if (get_char(context, head) == '[') {
+                char chr = get_char(context, head);
+                if (chr == '[') {
                     // Parse memory addressing
                     //   [base + index + displacement]
                     // displacement can be made up of one label and multiple integers that are added
@@ -611,6 +621,10 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                     operandIndex++;
 
                     int parsedRegs = 0;
+
+                    bool expectOperator = false;
+                    bool expectLiteral = false;
+                    bool prefixedWithMinusOperator = false;
 
                     while (true) {
 
@@ -627,48 +641,69 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                             break;
                         }
 
-                        string word;
-                        uint64_t disp;
-                        int parsed_chars = parse_name(context, &head, &word);
-                        if(parsed_chars) {
-                            int reg = get_regnr(word);
-                            if(reg != INVALID_REGISTER) {
-                                if (parsedRegs == 0) {
-                                    memoryOperand->reg_base = reg;
-                                } else if (parsedRegs == 1) {
-                                    memoryOperand->reg_index = reg;
-                                } else {
-                                    ERROR_SRC_RET(head, "Memory addressing is limited to 2 registers.\n");
-                                }
-                                parsedRegs++;
-                            } else {
-                                if (memoryOperand->label.len) {
-                                    ERROR_SRC_RET(head, "Memory addressing is limited to one label.\n");
-                                } else {
-                                    memoryOperand->label = word;
-                                }
+                        if (!expectOperator) {
+                            string word;
+                            uint64_t disp;
+                            int parsed_chars = 0;
+                            if (!expectLiteral) {
+                                parsed_chars = parse_name(context, &head, &word);
                             }
-                        } else {
-                            parsed_chars = parse_int(context, &head, &value);
-                            if (parsed_chars) {
-                                memoryOperand->immediate += value;
+                            if(parsed_chars) {
+                                int reg = get_regnr(word);
+                                if(reg != INVALID_REGISTER) {
+                                    if (parsedRegs == 0) {
+                                        memoryOperand->reg_base = reg;
+                                    } else if (parsedRegs == 1) {
+                                        memoryOperand->reg_index = reg;
+                                    } else {
+                                        ERROR_SRC_RET(head, "Memory addressing is limited to 2 registers.\n");
+                                    }
+                                    parsedRegs++;
+                                } else {
+                                    if (memoryOperand->label.len) {
+                                        ERROR_SRC_RET(head, "Memory addressing is limited to one label.\n");
+                                    } else {
+                                        memoryOperand->label = word;
+                                    }
+                                }
                             } else {
-                                char chrValue;
-                                parsed_chars = parse_char(context, &head, &chrValue);
+                                parsed_chars = parse_int(context, &head, &value);
                                 if (parsed_chars) {
-                                    memoryOperand->immediate += chrValue;
+                                    if (prefixedWithMinusOperator) {
+                                        memoryOperand->immediate -= value;
+                                    } else {
+                                        memoryOperand->immediate += value;
+                                    }
                                 } else {
-                                    char chr = get_char(context, head);
-                                    ERROR_SRC_RET(head, "Bad character in memory addressing '%c'.\n", chr);
+                                    char chrValue;
+                                    parsed_chars = parse_char(context, &head, &chrValue);
+                                    if (parsed_chars) {
+                                        if (prefixedWithMinusOperator) {
+                                            memoryOperand->immediate -= chrValue;
+                                        } else {
+                                            memoryOperand->immediate += chrValue;
+                                        }
+                                    } else {
+                                        char chr = get_char(context, head);
+                                        ERROR_SRC_RET(head, "Bad character in memory addressing '%c'.\n", chr);
+                                    }
                                 }
+                                expectLiteral = false;
                             }
-                        }
-                        
-                        parse_space(context, &head);
-
-                        chr = get_char(context, head);
-                        if (chr == '+') {
-                            head++;
+                            expectOperator = true;
+                        } else {
+                            // parse_space(context, &head);
+                            chr = get_char(context, head);
+                            if (chr == '+') {
+                                head++;
+                            } else if (chr == '-') {
+                                head++;
+                                expectLiteral = true;
+                                prefixedWithMinusOperator = true;
+                            } else {
+                                ERROR_SRC_RET(head, "Bad character in memory addressing '%c'.\n", chr);
+                            }
+                            expectOperator = false;
                         }
                     }
 
@@ -712,7 +747,7 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                     }
 
                 } else {
-                    ERROR_SRC_RET(location_head, "Could not parse instruction. Skipping to next line. (%s)\n", name.ptr);
+                    ERROR_SRC_RET(location_head, "Could not parse operands. '%c', %s\n",  chr, name.ptr);
                 }
             }
             
@@ -839,7 +874,7 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
 
     // Sort blocks from low to high address.
     int section_len = context->sections_len;
-    int* sorted_section_indices = malloc(section_len);
+    int* sorted_section_indices = malloc(section_len * sizeof(int));
     for(int i=0;i<section_len;i++) {
         sorted_section_indices[i] = i;
     }
@@ -860,6 +895,8 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
     }
 
     // Apply absolute address to labels
+    // and estimated worst-case ROM size.
+    uint64_t rom_max = 0;
     for(int i=0;i<section_len;i++) {
         Section* section = &context->sections[i];
         for(int j=0;j<section->labels_len;j++) {
@@ -867,6 +904,10 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
             label->estimated_addressLow += section->addr;
             label->estimated_addressHigh += section->addr;
             // printf("Label %s, 0x%zx 0x%zx\n", label->name.ptr, label->estimated_addressLow, label->estimated_addressHigh);
+        }
+        uint64_t newRomSize = section->addr + section->size;
+        if (newRomSize > rom_max) {
+            rom_max = newRomSize;
         }
     }
     
@@ -876,19 +917,15 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
     //     printf(" %s [0x%zx - 0x%zx] %d\n", a->name.ptr, a->addr, a->size, sorted_section_indices[i]);
     // }
 
-    uint8_t* rom_ptr;
-    uint64_t rom_max;
-    uint64_t rom_len;
-
     // Emit sections to binary
     Section* last_section = &context->sections[sorted_section_indices[section_len-1]];
-    rom_max = last_section->addr + last_section->size; // sections should have worst case size
-    rom_ptr = malloc(rom_max);
-    rom_len = 0;
+    uint8_t* rom_ptr = malloc(rom_max);
+    uint64_t rom_len = 0;
     memset(rom_ptr, 0, rom_max);
 
     context->labelFixups_len = 0;
-    context->labelFixups = malloc(sizeof(LabelFixup) * 1000);
+    context->labelFixups_max = 1000;
+    context->labelFixups = malloc(sizeof(LabelFixup) * context->labelFixups_max);
 
     Builder  _builder = {0};
     Builder* builder = &_builder;
@@ -972,11 +1009,11 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                     if (inst->operands[1].immediate >> 63) {
                         // Signed
                         int64_t imm = inst->operands[1].immediate;
-                        if (imm <= -0x80) {
+                        if (imm >= -0x80) {
                             emit_li8(builder, inst->operands[0].regnum, imm);
-                        } else if (imm <= -0x8000) {
+                        } else if (imm >= -0x8000) {
                             emit_li16(builder, inst->operands[0].regnum, imm);
-                        } else if (imm <= -0x80000000) {
+                        } else if (imm >= -0x80000000) {
                             emit_li32(builder, inst->operands[0].regnum, imm);
                         } else {
                             emit_li64(builder, inst->operands[0].regnum, imm);
@@ -1226,7 +1263,7 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
     //         printf("Label %s, 0x%zx\n", label->name.ptr, label->final_address);
     //     }
     // }
-
+    
     if (options->verbose) {
         printf("Estimated sections:\n");
     }

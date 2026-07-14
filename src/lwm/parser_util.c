@@ -140,7 +140,7 @@ int parse_int(ParserContext* context, int* inout_head, uint64_t* value) {
             }
             break;
         }
-    } else {
+    } else if (head + 1 < text_len && text[head] >= '0' && text[head] <= '9') {
         // 10-base integer
         while(head < text_len) {
             char chr = text[head];
@@ -155,6 +155,9 @@ int parse_int(ParserContext* context, int* inout_head, uint64_t* value) {
             }
             break;
         }
+    } else {
+        // Not an integer
+        return 0;
     }
     if(negate) {
         *value = -tempValue;
@@ -247,10 +250,23 @@ int parse_space(ParserContext* context, int* inout_head) {
         }
         if (chr == '/' && chr_next == '*') {
             head += 2;
+            int depth = 1;
             while(head < text_len) {
-                if(head+2 < text_len && text[head] == '*' && text[head+1] == '/') {
-                    head+=2;
+                if (head+2 >= text_len) {
+                    // END OF FILE!!! unterminated comment!
                     break;
+                }
+                if(text[head] == '/' && text[head+1] == '*') {
+                    head+=2;
+                    depth++;
+                    continue;
+                } else if(text[head] == '*' && text[head+1] == '/') {
+                    head+=2;
+                    depth--;
+                    if (depth <= 0) {
+                        break;
+                    }
+                    continue;
                 }
                 ++head;
             }
@@ -302,6 +318,7 @@ int parse_string(ParserContext* context, int* inout_head, string* str) {
                 head += 2;
                 continue;
             } else {
+                Assert(str->len <= maxLength);
                 // TODO: Handle escaped characters
                 return 0;
             }
@@ -495,7 +512,8 @@ void push_raw_text(ParserContext* context, const char* file, const char* text, i
 
 bool preprocess_text(ParserContext* context, const string in_text, string* out_text, const char* sourcePath) {
 
-    MacroDef* macros = calloc(100, sizeof(MacroDef));
+    int macros_max = 100;
+    MacroDef* macros = calloc(macros_max, sizeof(MacroDef));
     int macros_len = 0;
 
     
@@ -530,6 +548,7 @@ bool preprocess_text(ParserContext* context, const string in_text, string* out_t
     int              includeStack_max = 50;
     ParserSaveState* includeStack = malloc(sizeof(ParserSaveState) * includeStack_max);
 
+    int macroCounter = 0;
     
     while (true) {
         
@@ -549,7 +568,22 @@ bool preprocess_text(ParserContext* context, const string in_text, string* out_t
         int headBeforeDirective = head;
 
         char chr = get_char(context, head);
-        if (chr != '#') {
+        if (chr == '"' || chr == '\'') {
+            int headStart = head;
+            head++;
+            while (true) {
+                if (parse_eof(context, head)) {
+                    ERROR_SRC_RET(head, "Unterminated string at end of file.\n");
+                }
+                char tempChar = get_char(context, head);
+                head++;
+                if (tempChar == chr) {
+                    break;
+                }
+            }
+            push_text(context, headStart, head);
+            continue;
+        } else if (chr != '#') {
             head++;
             push_text(context, head - 1, head);
             continue;
@@ -560,7 +594,8 @@ bool preprocess_text(ParserContext* context, const string in_text, string* out_t
         string macroName;
         int parsedChars = parse_name(context, &head, &macroName);
         if (!parsedChars) {
-            ERROR_SRC_RET(head, "Expected a directive.\n");
+            char chr = get_char(context, head);
+            ERROR_SRC_RET(head, "Expected a directive. '%c'\n", chr);
         }
 
         if (equal(macroName, "include")) {
@@ -579,6 +614,7 @@ bool preprocess_text(ParserContext* context, const string in_text, string* out_t
                 ERROR_SRC_RET(head, "Could not open '%s'.\n", includePath.ptr);
             }
 
+            Assert(includeStack_len < includeStack_max);
             includeStack_len++;
             ParserSaveState* lastInclude = &includeStack[includeStack_len-1];
             *lastInclude = parse_save(context, includePath.ptr, fileBuffer, fileBuffer_len, &head);
@@ -604,6 +640,7 @@ bool preprocess_text(ParserContext* context, const string in_text, string* out_t
                 head++;
             }
 
+            Assert(macros_len < macros_max);
             MacroDef* macro = &macros[macros_len];
             macros_len++;
             strcpy(macro->name, macroName.ptr);
@@ -623,6 +660,7 @@ bool preprocess_text(ParserContext* context, const string in_text, string* out_t
                     string parameterName;
                     parsedChars = parse_name(context, &head, &parameterName);
                     if (parsedChars) {
+                        Assert(macro->parameters_len < ARRAY_LENGTH(macro->parameters));
                         MacroParameter* parameter = &macro->parameters[macro->parameters_len];
                         macro->parameters_len++;
                         strcpy(parameter->name, parameterName.ptr);
@@ -718,6 +756,12 @@ bool preprocess_text(ParserContext* context, const string in_text, string* out_t
             }
 
             continue;
+        } else if (equal(macroName, "counter")) {
+            char number[25];
+            int number_len = snprintf(number, sizeof(number), "%d", macroCounter);
+            macroCounter++;
+            push_raw_text(context, "<counter>", number, number_len);
+            continue;
         }
 
         MacroDef* foundMacro = NULL;
@@ -768,6 +812,7 @@ bool preprocess_text(ParserContext* context, const string in_text, string* out_t
                 char chr = get_char(context, head);
                 if (chr == ')' || chr == ',') {
                     if (argStart != argEnd) {
+                        Assert(arguments_len < ARRAY_LENGTH(arguments));
                         Argument* arg = &arguments[arguments_len];
                         arguments_len++;
 
@@ -800,6 +845,7 @@ bool preprocess_text(ParserContext* context, const string in_text, string* out_t
         while (body_head < body_len) {
 
             char chr = body[body_head];
+            // @TODO % and # are not handled in string literals. They should be treated as normal characters.
             if (chr == '%') {
                 body_head++;
 
@@ -838,18 +884,29 @@ bool preprocess_text(ParserContext* context, const string in_text, string* out_t
                 } else {
                     // @TODO Error, missing arguments.
                 }
-                
-            } else {
-                push_raw_text(context, context->path, body + body_head, 1);
+                continue;
+            } else if (chr == '#') {
                 body_head++;
+
+                string macroName;
+                parsedChars = parse_name(context, &body_head, &macroName);
+
+                if (equal(macroName, "counter")) {
+                    char number[25];
+                    int number_len = snprintf(number, sizeof(number), "%d", macroCounter);
+                    macroCounter++;
+                    push_raw_text(context, context->path, number, number_len);
+                    continue;
+                } else if(macroName.len) {
+                    ERROR_SRC_RET(body_head, "Directive '%s' does not exist or is not allowed in macro evaluation\n", macroName.ptr);
+                }
             }
+
+            push_raw_text(context, context->path, body + body_head, 1);
+            body_head++;
         }
 
         parse_restore(context, prevState, &body_head);
-
-        #undef head
-
-
     }
 
     out_text->ptr = context->outputBuffer;

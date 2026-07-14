@@ -620,7 +620,9 @@ void emulator_enter_vector(CoreState* core, int vector) {
 
     // printf("EH addr=0x%zx crvb=0x%zx\n", eh_address, core->crvb);
 
-    // @TODO If this fails then it's a triple fault.
+    // @TODO If this fails then it's a triple fault. Currently on first fault this will be a double fault.
+    //   Reason it should be tripple fault is that we can't enter the vector so CPU must shutdown.
+    //   Which it will eventually.
     mmu_operation(core, MMU_READ, eh_address, entrySize, &ex_handler, true);
 
     core->crepc = core->pc;

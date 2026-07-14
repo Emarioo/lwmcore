@@ -143,6 +143,7 @@ int main(int argc, const char** argv) {
     config.verbose = verbose;
     config.core_count = 2;
     config.core_mode = MODE_16;
+    config.ram_size = 0x100000;
 
     if (platform_config_file) {
         bool yes = parse_platform_config(platform_config_file, &config);

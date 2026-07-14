@@ -22,7 +22,8 @@ void builder_init_stream(Builder* builder, void* ptr, size_t head, size_t max) {
 
 
 #define APPEND_BYTES(bytes)                                         \
-    for (int bi=0;bi<sizeof(bytes)/sizeof(*bytes);bi++) {           \
+    Assert(builder->byteStream_len + ARRAY_LENGTH(bytes) <= builder->byteStream_max);  \
+    for (int bi=0;bi<ARRAY_LENGTH(bytes);bi++) {                    \
         builder->byteStream[builder->byteStream_len] = bytes[bi];   \
         builder->byteStream_len++;                                  \
     }
