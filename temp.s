@@ -2,110 +2,25 @@
 #define UART_BASE 0xF004
 #define LOG_BASE  0xF008
 
-#define PLATFORM_CORE_CONTROL 0xEFE0
-#define PLATFORM_CORE_CPUID   0xEFE2
-#define PLATFORM_CORE_ENTRY   0xEFE8
 
-#define PLATFORM_CORE_CONTROL_BOOT 0x1
-#define PLATFORM_CORE_CONTROL_RESET 0x2
+#include "defs.s"
 
+
+
+section .data 0x50
+msg:
+    byte[] #HELLO
 
 section .text 0x0
     jmp main
 
-global_counter:
-    long
-core0_counter:
-    long
-core1_counter:
-    long
-
 main:
     li sp, 0x1000
 
-    li r0, 1
-    stb r0, [#PLATFORM_CORE_CPUID]
-    lea r0, [core_entry]
-    sth r0, [#PLATFORM_CORE_ENTRY]
-    li r0, #PLATFORM_CORE_CONTROL_BOOT
-    stb r0, [#PLATFORM_CORE_CONTROL]
-
-.loop:
-    li r1, 1
-
-    call lock
-    ldh r0, [global_counter]
-    add r0, r0, r1
-    sth r0, [global_counter]
-    call unlock
-
-    ldh r0, [core0_counter]
-    add r0, r0, r1
-    sth r0, [core0_counter]
-
-    li r2, 100
-    jne r0, r2, .loop
-
-    // Add some delay for core1 to finish counting
-    li r1, 1
-    li r0, 80
-.delay:
-    sub r0, r0, r1
-    jnz r0, .delay
-
-    ldh r0, [global_counter]
-    ldh r1, [core0_counter]
-    ldh r2, [core1_counter]
+    lea r0, [msg]
+    call putstring
 
     hlt
-
-core_entry:
-    li sp, 0x1100
-
-.loop:
-    li r1, 1
-
-    call lock
-    ldh r0, [global_counter]
-    add r0, r0, r1
-    sth r0, [global_counter]
-    call unlock
-
-    ldh r0, [core1_counter]
-    add r0, r0, r1
-    sth r0, [core1_counter]
-
-    li r2, 100
-    jne r0, r2, .loop
-
-.spin:
-    jmp .spin
-
-    hlt
-
-mutex_lock:
-    long
-
-lock:
-    push r0
-    push r1
-    li r0, 0
-
-.loop:
-    li r1, 1
-    cas r0, r1, [mutex_lock]
-    jne r0, r1, .loop
-
-    pop r1
-    pop r0
-    ret
-
-unlock:
-    push r0
-    li r0, 0
-    stb r0, [mutex_lock]
-    pop r0
-    ret
 
 
 putchar:

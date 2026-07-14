@@ -380,15 +380,41 @@ int parse_line(ParserContext* context, int* inout_head) {
 
 
 
-Location count_lines(ParserContext* context, int inout_head) {
-    int head = inout_head;
-    const char* text = context->text;
+SourceLocation get_location(ParserContext* context, int inout_head) {
+    SourceSpan* foundSpan = nullptr;
+    SourceSpan* foundRealSpan = nullptr;
+    for(int i=0;i<context->spans_len;i++) {
+        SourceSpan* span = &context->spans[i];
+        if(inout_head >= span->dst_start && inout_head < span->dst_end) {
+            foundSpan = span;
+            while (span->file[0] == '<') {
+                i--;
+                Assert(i>=0);
+                span = &context->spans[i];
+            }
+            foundRealSpan = span;
+            break;
+        }
+    }
+    Assert(foundSpan);
 
-    Location loc = { context->path, 1, 1 };
+    char* buffer;
+    size_t buffer_size;
+
+    bool found = readFile(foundRealSpan->file, (void**)&buffer, &buffer_size);
+    Assert(found);
+
+    SourceLocation loc = { foundRealSpan->file, 1, 1, .dst_index = inout_head };
+    int targetIndex;
+    if (foundRealSpan != foundSpan) {
+        targetIndex = foundRealSpan->src_end;
+    } else {
+        targetIndex = foundSpan->src_start + inout_head - foundSpan->dst_start;
+    }
     
     int index = 0;
-    while(index < head) {
-        if (text[index] == '\n') {
+    while(index < targetIndex) {
+        if (buffer[index] == '\n') {
             loc.line++;
             loc.column = 0;
         }
@@ -396,27 +422,6 @@ Location count_lines(ParserContext* context, int inout_head) {
         index++;
         loc.column++;
     }
-
-    // @TODO Implement location mapping needed to accurate locations in error messages.
-    //    Stripped comments and included files is not accounted for with the above.
-    // LocationMapping* map = nullptr;
-    // for(int i=0;i<context->loc_map_len;i++) {
-    //     map = &context->loc_map[i];
-    //     if(head >= map->head_start && head < map->head_end)
-    //         break;
-    // }
-    // // Assert(map);
-    // Location loc = {map->file.ptr, map->line, 1};
-    // int index = map->head_start;
-    // while(index < head) {
-    //     if (text[index] == '\n') {
-    //         loc.line++;
-    //         loc.column = 0;
-    //     }
-
-    //     index++;
-    //     loc.column++;
-    // }
     return loc;
 }
 
@@ -435,27 +440,77 @@ typedef struct {
 } MacroDef;
 
 
-#define ERROR_SRC_RET(HEAD, FORMAT, ...) Location loc = count_lines(context, HEAD); error_src(loc, FORMAT, ##__VA_ARGS__); longjmp(context->jumpBuffer, 1)
+#define ERROR_SRC_RET(HEAD, FORMAT, ...) SourceLocation loc = get_location(context, HEAD); error_src(loc, FORMAT, ##__VA_ARGS__); longjmp(context->jumpBuffer, 1)
 
 
-bool preprocess_text(const string in_text, string* out_text) {
+
+void push_text(ParserContext* context, int start, int end) {
+    const int size = end - start;
+    Assert(context->outputBuffer_len + size < context->outputBuffer_max);
+    
+    SourceSpan* lastSpan = context->spans_len > 0 ? &context->spans[context->spans_len-1] : NULL;
+    if (lastSpan && lastSpan->file == context->path && lastSpan->src_end == start) {
+        lastSpan->dst_end = context->outputBuffer_len + size;
+        lastSpan->src_end = end;
+    } else {
+        Assert(context->spans_len+1 <= context->spans_max);
+        context->spans_len++;
+        SourceSpan* newSpan = &context->spans[context->spans_len-1];
+        memset(newSpan, 0, sizeof(*newSpan));
+        newSpan->file = context->path;
+        newSpan->src_start = start;
+        newSpan->src_end = end;
+        newSpan->dst_start = context->outputBuffer_len;
+        newSpan->dst_end = context->outputBuffer_len + size;
+    }
+    
+    memcpy(context->outputBuffer + context->outputBuffer_len, context->text + start, size);
+    context->outputBuffer_len += size;
+    context->outputBuffer[context->outputBuffer_len] = '\0';
+}
+
+void push_raw_text(ParserContext* context, const char* file, const char* text, int size) {
+    Assert(context->outputBuffer_len + size < context->outputBuffer_max);
+
+    SourceSpan* lastSpan = context->spans_len > 0 ? &context->spans[context->spans_len-1] : NULL;
+
+    if (lastSpan && lastSpan->file == file) {
+        lastSpan->dst_end = context->outputBuffer_len + size;
+    } else {
+        Assert(context->spans_len+1 <= context->spans_max);
+        context->spans_len++;
+        SourceSpan* newSpan = &context->spans[context->spans_len-1];
+        memset(newSpan, 0, sizeof(*newSpan));
+        newSpan->file = file;
+        newSpan->src_start = lastSpan->src_end;
+        newSpan->src_end = lastSpan->src_end + 1;
+        newSpan->dst_start = context->outputBuffer_len;
+        newSpan->dst_end = context->outputBuffer_len + size;
+    }
+    
+    memcpy(context->outputBuffer + context->outputBuffer_len, text, size);
+    context->outputBuffer_len += size;
+    context->outputBuffer[context->outputBuffer_len] = '\0';
+}
+
+bool preprocess_text(ParserContext* context, const string in_text, string* out_text, const char* sourcePath) {
 
     MacroDef* macros = calloc(100, sizeof(MacroDef));
     int macros_len = 0;
 
-
-    const char* text = in_text.ptr;
-    int         text_len = in_text.len;
-
+    
     ParserContext _context = {0};
-    ParserContext* context = &_context;
+    if (!context) {
+        context = &_context;
+    }
+    
+    context->path = sourcePath;
+    context->text = in_text.ptr;
+    context->text_len = in_text.len;
 
-    context->text = text;
-    context->text_len = text_len;
-
-    int outputBuffer_max = 0x10000;
-    int outputBuffer_len = 0;
-    char* outputBuffer = malloc(outputBuffer_max);
+    context->outputBuffer_max = 0x10000 - 1;
+    context->outputBuffer_len = 0;
+    context->outputBuffer = malloc(context->outputBuffer_max + 1);
 
     int jmpResult = setjmp(context->jumpBuffer);
     if (jmpResult != 0) {
@@ -463,30 +518,44 @@ bool preprocess_text(const string in_text, string* out_text) {
         return false;
     }
 
-    #define APPEND_BYTES(END,SIZE) \
-        for (int bi=0;bi<(SIZE);bi++) { \
-            outputBuffer[outputBuffer_len] = context->text[(END) - (SIZE) + bi]; \
-            outputBuffer_len++; \
-        }
-
     int head = 0;
     int parsedChars;
 
+    context->spans_len = 0;
+    context->spans_max = 200;
+    context->spans = malloc(sizeof(SourceSpan) * context->spans_max);
+
+
+    int              includeStack_len = 0;
+    int              includeStack_max = 50;
+    ParserSaveState* includeStack = malloc(sizeof(ParserSaveState) * includeStack_max);
+
+    
     while (true) {
-
+        
         parsedChars = parse_space(context, &head);
-        APPEND_BYTES(head, parsedChars);
-
-        if (parse_eof(context, head))
+        push_text(context, head - parsedChars, head);
+        
+        if (parse_eof(context, head)) {
+            if (includeStack_len > 0) {
+                ParserSaveState* lastInclude = &includeStack[includeStack_len-1];
+                parse_restore(context, *lastInclude, &head);
+                includeStack_len--;
+                continue;
+            }
             break;
+        }
+
+        int headBeforeDirective = head;
 
         char chr = get_char(context, head);
         if (chr != '#') {
             head++;
-            APPEND_BYTES(head, 1);
+            push_text(context, head - 1, head);
             continue;
         }
         head++;
+
         
         string macroName;
         int parsedChars = parse_name(context, &head, &macroName);
@@ -494,14 +563,38 @@ bool preprocess_text(const string in_text, string* out_text) {
             ERROR_SRC_RET(head, "Expected a directive.\n");
         }
 
-        if (equal(macroName, "define")) {
-            
+        if (equal(macroName, "include")) {
             parse_space(context, &head);
+
+            string includePath;
+            int parsedChars = parse_string(context, &head, &includePath);
+            if (!parsedChars) {
+                ERROR_SRC_RET(head, "Expected a path in quotes.\n");
+            }
+            
+            char*  fileBuffer;
+            size_t fileBuffer_len;
+            int res = readFile(includePath.ptr, (void**)&fileBuffer, &fileBuffer_len);
+            if (!res) {
+                ERROR_SRC_RET(head, "Could not open '%s'.\n", includePath.ptr);
+            }
+
+            includeStack_len++;
+            ParserSaveState* lastInclude = &includeStack[includeStack_len-1];
+            *lastInclude = parse_save(context, includePath.ptr, fileBuffer, fileBuffer_len, &head);
+
+            continue;
+
+        } else if (equal(macroName, "define")) {
+            
+            parsedChars = parse_space(context, &head);
 
             int parsedChars = parse_name(context, &head, &macroName);
             if (!parsedChars) {
                 ERROR_SRC_RET(head, "Expected a macro name.\n");
             }
+
+            // printf("macro %s\n", macroName.ptr);
 
             bool hasParams = false;
 
@@ -595,11 +688,11 @@ bool preprocess_text(const string in_text, string* out_text) {
             }
             
             // Remove extra whitespace
-            parse_space(context, &head);
+            parsedChars = parse_space(context, &head);
 
             macro->body_len = body_end - body_start;
             macro->body = malloc(macro->body_len+1);
-            memcpy(macro->body, text + body_start, macro->body_len);
+            memcpy(macro->body, context->text + body_start, macro->body_len);
             macro->body[macro->body_len] = 0;
             continue;
         } else if (equal(macroName, "repeat")) {
@@ -621,10 +714,7 @@ bool preprocess_text(const string in_text, string* out_text) {
             }
             
             for (int ri=0;ri<count;ri++) {
-                for (int bi=0;bi<content.len;bi++) {
-                    outputBuffer[outputBuffer_len] = content.ptr[bi];
-                    outputBuffer_len++;
-                }
+                push_raw_text(context, "<repeat>", content.ptr, content.len);
             }
 
             continue;
@@ -705,9 +795,7 @@ bool preprocess_text(const string in_text, string* out_text) {
         int   body_len = foundMacro->body_len;
         int   body_head = 0;
 
-        #define head INCOMPLETE // make sure we don't accidently use it
-
-        ParserSaveState prevState = parse_save(context, body, body_len);
+        ParserSaveState prevState = parse_save(context, "<macro_body>", body, body_len, &body_head);
 
         while (body_head < body_len) {
 
@@ -745,30 +833,26 @@ bool preprocess_text(const string in_text, string* out_text) {
                 if (foundParamIndex < arguments_len) {
                     Argument* arg = &arguments[foundParamIndex];
 
-                    // @TODO Check max outputbuffer size.
                     int length = arg->end - arg->start;
-                    memcpy(outputBuffer + outputBuffer_len, text + arg->start, length);
-                    outputBuffer_len += length;
+                    push_raw_text(context, context->path, prevState.text + arg->start, length);
                 } else {
                     // @TODO Error, missing arguments.
                 }
-
-
+                
             } else {
+                push_raw_text(context, context->path, body + body_head, 1);
                 body_head++;
-                outputBuffer[outputBuffer_len] = chr;
-                outputBuffer_len++;
             }
         }
 
-        parse_restore(context, prevState);
+        parse_restore(context, prevState, &body_head);
 
         #undef head
 
 
     }
 
-    out_text->ptr = outputBuffer;
-    out_text->len = outputBuffer_len;
+    out_text->ptr = context->outputBuffer;
+    out_text->len = context->outputBuffer_len;
     return true;
 }

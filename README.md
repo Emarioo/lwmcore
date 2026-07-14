@@ -98,8 +98,8 @@ Core state:
 - [ ] Test 32-bit and 64-bit mode.
 - [ ] Resolve TODOs in code.
 - [ ] Finish CPU ISA. A revision for CPU encodings in the future is planned along with generating C code to encode/decode the opcodes from a scheme.
-- [ ] Finish assembler guide.
-- [ ] Finish emulator guide.
+- [ ] Finish assembler guide/spec?. preprocessor, labels, sections.
+- [ ] Finish emulator guide. Arguments. A little on HardwareDevice and how to emulate MMIO devices.
 - [ ] Finish quick guide to the emulator, assembler, and CPU.
 
 # Future TODOs

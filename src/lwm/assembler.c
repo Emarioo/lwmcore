@@ -52,7 +52,7 @@ typedef struct {
 #define parse_int(CTX, ...) parse_int(&CTX->parserContext, __VA_ARGS__)
 #define parse_char(CTX, ...) parse_char(&CTX->parserContext, __VA_ARGS__)
 #define parse_eof(CTX, ...) parse_eof(&CTX->parserContext, __VA_ARGS__)
-#define count_lines(CTX, ...) count_lines(&CTX->parserContext, __VA_ARGS__)
+#define count_lines(CTX, ...) get_location(&CTX->parserContext, __VA_ARGS__)
 #define get_char(CTX, ...) get_char(&CTX->parserContext, __VA_ARGS__)
 #define next_is_newline(CTX, ...) next_is_newline(&CTX->parserContext, __VA_ARGS__)
 
@@ -60,9 +60,9 @@ int get_regnr(string name);
 
 #define INVALID_REGISTER -1
 
-#define ERROR_SRC_RET(HEAD, FORMAT, ...) Location loc = count_lines(context, HEAD); error_src(loc, FORMAT, ##__VA_ARGS__); longjmp(context->jumpBuffer, 1)
-#define ERROR_SRC(HEAD, FORMAT, ...) Location loc = count_lines(context, HEAD); error_src(loc, FORMAT, ##__VA_ARGS__);
-#define LOG_SRC(HEAD, FORMAT, ...) Location loc = count_lines(context, HEAD); log_src(loc, FORMAT, ##__VA_ARGS__);
+#define ERROR_SRC_RET(HEAD, FORMAT, ...) SourceLocation loc = count_lines(context, HEAD); error_src(loc, FORMAT, ##__VA_ARGS__); longjmp(context->jumpBuffer, 1)
+#define ERROR_SRC(HEAD, FORMAT, ...) SourceLocation loc = count_lines(context, HEAD); error_src(loc, FORMAT, ##__VA_ARGS__);
+#define LOG_SRC(HEAD, FORMAT, ...) SourceLocation loc = count_lines(context, HEAD); log_src(loc, FORMAT, ##__VA_ARGS__);
 
 
 // void add_object() {
@@ -152,20 +152,25 @@ void prefix_namespace(string* name, const string namespace) {
 }
 
 AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOptions* options) {
+    AssemblerContext* context = malloc(sizeof(AssemblerContext));
+    memset(context, 0, sizeof(AssemblerContext));
 
     string out_text;
-    bool preprocResult = preprocess_text((string){ .len = in_text_len, .ptr = (char*)in_text }, &out_text);
+    bool preprocResult = preprocess_text(&context->parserContext, (string){ .len = in_text_len, .ptr = (char*)in_text }, &out_text, options->sourcePath);
     if (!preprocResult) {
         return LWM_ASM_ERROR_BAD;
     }
 
     writeFile("temp.pp", out_text.ptr, out_text.len);
 
+    // for (int i=0;i<context->parserContext.spans_len;i++) {
+    //     SourceSpan* loc = &context->parserContext.spans[i];
+    //     printf("MAP %s %d %d\n", loc->file, loc->dst_start, loc->dst_end);
+    // }
+
     const char* text = out_text.ptr;
     int text_len = out_text.len;
 
-    AssemblerContext* context = malloc(sizeof(AssemblerContext));
-    memset(context, 0, sizeof(AssemblerContext));
     // Memory leak. we never free context.
 
     context->source_file.ptr = (char*)options->sourcePath;
@@ -177,12 +182,6 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
     int max_sections = 20;
     context->sections = malloc(sizeof(Section) * max_sections);
     memset(context->sections, 0, sizeof(Section) * max_sections);
-    
-    // LocationMapping* map = &context->loc_map[context->loc_map_len++];
-    // map->file = context->source_file;
-    // map->head_start = 0;
-    // map->line = 1;
-    // map->head_end = text_len;
 
     int jmpResult = setjmp(context->jumpBuffer);
     if (jmpResult != 0) {
@@ -190,7 +189,7 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
     }
 
     {
-        Location loc = count_lines(context, 0);
+        SourceLocation loc = count_lines(context, 0);
         Section* section = &context->sections[context->sections_len];
         section->addr = 0;
         section->location = loc;
@@ -469,7 +468,7 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
             context->sections[context->sections_len-1].size = estimated_addressHigh;
 
             // Create new block and set its address
-            Location loc = count_lines(context, head);
+            SourceLocation loc = count_lines(context, head);
             Section* section = &context->sections[context->sections_len];
             section->location = loc;
             context->sections_len++;

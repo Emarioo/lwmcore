@@ -8,7 +8,7 @@
 #include <stdbool.h>
 
 
-#define ERROR_SRC_RET(HEAD, FORMAT, ...) Location loc = count_lines(context, HEAD); error_src(loc, FORMAT, ##__VA_ARGS__); longjmp(context->jumpBuffer, 1);
+#define ERROR_SRC_RET(HEAD, FORMAT, ...) SourceLocation loc = get_location(context, HEAD); error_src(loc, FORMAT, ##__VA_ARGS__); longjmp(context->jumpBuffer, 1);
 
 void parse_scheme(const char* path, scheme_Database* database) {
     bool res;
@@ -19,11 +19,14 @@ void parse_scheme(const char* path, scheme_Database* database) {
         return;
     }
 
+    ParserContext _context = {0};
+    ParserContext* context = &_context;
+
     string raw_text = { .len = fileBuffer_len,
                         .ptr = fileBuffer };
     string text;
 
-    res = preprocess_text(raw_text, &text);
+    res = preprocess_text(context, raw_text, &text, path);
     if (!res) {
         return;
     }
@@ -31,8 +34,6 @@ void parse_scheme(const char* path, scheme_Database* database) {
     // writeFile("scheme.pp", text.ptr, text.len);
 
 
-    ParserContext _context = {0};
-    ParserContext* context = &_context;
     context->path = path;
     context->text = text.ptr;
     context->text_len = text.len;

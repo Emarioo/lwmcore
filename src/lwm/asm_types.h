@@ -64,7 +64,7 @@ typedef struct {
     string   name;
     uint64_t addr;
     uint64_t size;
-    Location location;
+    SourceLocation location;
     
     int     objects_len;
     int     objects_max;

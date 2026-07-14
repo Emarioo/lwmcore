@@ -46,7 +46,7 @@ typedef struct {
     char* ptr;
 } Bin;
 
-#define error_src(LOC,FORMAT, ...) printf("\e[31m%s:%d:%d:\e[0m " FORMAT, (LOC).file, (LOC).line, (LOC).column, ##__VA_ARGS__)
+#define error_src(LOC,FORMAT, ...) printf("\e[31m%s:%d:%d:@%d:\e[0m " FORMAT, (LOC).file, (LOC).line, (LOC).column, (LOC).dst_index, ##__VA_ARGS__)
 #define error(FORMAT, ...) printf("\e[31mERROR:\e[0m " FORMAT, ##__VA_ARGS__)
 #define warning_src(LOC,FORMAT, ...) printf("\e[33m%s:%d:%d:\e[0m " FORMAT, (LOC).file, (LOC).line, (LOC).column, ##__VA_ARGS__)
 #define warning(FORMAT, ...) printf("\e[33mWARNING:\e[0m " FORMAT, ##__VA_ARGS__)

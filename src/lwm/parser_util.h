@@ -11,27 +11,34 @@ typedef struct {
     const char* file;
     int line;
     int column;
-} Location;
+    int dst_index;
+} SourceLocation;
 
 
 typedef struct {
-    int head_start;
-    int head_end;
-    string file;
-    int line;
-} LocationMapping;
+    int src_start;
+    int src_end;
+    int dst_start;
+    int dst_end;
+    const char* file;
+    // line and column info are computed as needed. Can be cached in the future if needed.
+} SourceSpan;
 
-#define MAX_LOCATION_MAPPING 100
 
 typedef struct {
     const char* path;
     const char* text;
     int         text_len;
 
-    int loc_map_len;
-    LocationMapping loc_map[MAX_LOCATION_MAPPING]; // TODO: Increase limit
+    int         spans_len;
+    int         spans_max;
+    SourceSpan* spans;
 
-    jmp_buf     jumpBuffer;
+    int   outputBuffer_max;
+    int   outputBuffer_len;
+    char* outputBuffer;
+
+    jmp_buf jumpBuffer;
 } ParserContext;
 
 
@@ -48,22 +55,31 @@ int parse_int(ParserContext* context, int* inout_head, uint64_t* value);
 
 
 typedef struct {
+    const char* path;
     const char* text;
     int         text_len;
+    int         prev_position;
 } ParserSaveState;
 
-static inline ParserSaveState parse_save(ParserContext* context, const char* newText, int newLength) {
+static inline ParserSaveState parse_save(ParserContext* context, const char* path, const char* newText, int newLength, int* position) {
     ParserSaveState state = {
+        .path = context->path,
         .text = context->text,
         .text_len = context->text_len,
+        .prev_position = *position,
     };
+    context->path = path;
     context->text = newText;
     context->text_len = newLength;
+    *position = 0;
     return state;
 }
-static inline void parse_restore(ParserContext* context, const ParserSaveState state) {
+
+static inline void parse_restore(ParserContext* context, const ParserSaveState state, int* position) {
+    context->path = state.path;
     context->text = state.text;
     context->text_len = state.text_len;
+    *position = state.prev_position;
 }
 
 static inline int parse_eof(ParserContext* context, int inout_head) {
@@ -84,7 +100,7 @@ static inline char get_char(ParserContext* context, int inout_head) {
 
 
 
-Location count_lines(ParserContext* context, int inout_head);
+SourceLocation get_location(ParserContext* context, int inout_head);
 
 
-bool preprocess_text(const string text, string* out_text);
+bool preprocess_text(ParserContext* context, const string text, string* out_text, const char* sourcePath);
