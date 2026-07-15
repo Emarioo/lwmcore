@@ -6,31 +6,37 @@
 
 #include "lwm/util.h"
 
-void gpr_to_string(int reg, char regname[20]) {
+const char* gpr_to_string(int reg, char regname[20]) {
     if (reg == LWM_REGNR_LR)      sprintf(regname, "lr");
     else if (reg == LWM_REGNR_SP) sprintf(regname, "sp");
     else if (reg == LWM_REGNR_TP) sprintf(regname, "tp");
     else                          sprintf(regname, "r%d", reg);
+    return regname;
 }
-void cr_to_string(int reg, char regname[20]) {
+const char* cr_to_string(int reg, char regname[20]) {
+    static const char temp[256];
     // @TODO Make function to convert regnum to string
     switch ((ControlRegister)reg) {
-        case LWM_REGNR_CRSTATUS:   sprintf(regname, "CRSTATUS"); return;
-        case LWM_REGNR_CRVB:       sprintf(regname, "CRVB"); return;
-        case LWM_REGNR_CRPT:       sprintf(regname, "CRPT"); return;
-        case LWM_REGNR_CRISP:      sprintf(regname, "CRISP"); return;
+        #define CASE(CR) case LWM_REGNR_##CR: \
+            sprintf(regname, #CR); return regname;
 
-        case LWM_REGNR_CRESTATUS:  sprintf(regname, "CRESTATUS"); return;
-        case LWM_REGNR_CREPC:      sprintf(regname, "CREPC"); return;
-        case LWM_REGNR_CRESP:      sprintf(regname, "CRESP"); return;
-        case LWM_REGNR_CRCAUSE:    sprintf(regname, "CRCAUSE"); return;
-        case LWM_REGNR_CRFAULT:    sprintf(regname, "CRFAULT"); return;
-
-        case LWM_REGNR_CRCPUID:    sprintf(regname, "CRCPUID"); return;
-        case LWM_REGNR_CRTIMERCMP: sprintf(regname, "CRTIMERCMP"); return;
-        case LWM_REGNR_CRKERNEL:   sprintf(regname, "CRKERNEL"); return;
+        CASE(CRSTATUS)
+        CASE(CRVB)
+        CASE(CRPT)
+        CASE(CRISP)
+        CASE(CRESTATUS)
+        CASE(CREPC)
+        CASE(CRESP)
+        CASE(CRCAUSE)
+        CASE(CRFAULT)
+        CASE(CRCPUID)
+        CASE(CRTIMERCMP)
+        CASE(CRKERNEL)
+        
+        #undef CASE
     }
     sprintf(regname, "cr%d", reg);
+    return regname;
 }
 
 int largest_encoding_ext(int opcode, AddressingForm form, int* lowestBytes) {
@@ -212,6 +218,7 @@ const char* opcode_to_string(int opcode) {
         CASE(OPCODE_RDTICK1, "rdtick1")
         CASE(OPCODE_RDTICK2, "rdtick2")
     }
+    #undef CASE
     Assert(false);
     return "unknown";
 }

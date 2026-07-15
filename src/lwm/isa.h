@@ -203,11 +203,25 @@ typedef enum {
 } AddressingForm;
 
 
+typedef enum {
+    CPUFEAT_REG_BYTES,
+    CPUFEAT_FEATURES0,
+    CPUFEAT_FEATURES1,
+} FeatureID;
+
+typedef enum {
+    CPUFEAT_FEATURES0_FLOAT = 0x1,
+} FeatureID_Features0;
+
+
+
+
+
 int largest_encoding_ext(int opcode, AddressingForm form, int* lowestBytes);
 static inline int largest_encoding(int opcode, AddressingForm form) {
     return largest_encoding_ext(opcode, form, NULL);
 }
 
-void gpr_to_string(int reg, char regname[20]);
-void cr_to_string(int reg, char regname[20]);
+const char* gpr_to_string(int reg, char regname[20]);
+const char* cr_to_string(int reg, char regname[20]);
 const char* opcode_to_string(int opcode);

@@ -108,7 +108,7 @@ This table is outdated
 |5|Misaligned Access|Load or store instruction where address is not aligned by the width of the instruction. Cannot occur for byte loads or stores.|
 |6|Syscall|Occurs when the 'syscall' instruction is executed.|
 |7|Division by Zero||
-|8|Breakpoint|Occurs when the 'dbg' instruction is executed.|
+|8|Debug Breakpoint|Occurs when the 'dbg' instruction is executed.|
 |9|Timer interrupt|Triggered when CRTIMERCMP becomes equal to tick counter|
 |10|Bus Error|Transaction for physical address could not be completed. Or similar bus device errors.|
 |11|Fatal Machine Error|A serious error happened in the machine and kernel should panic.|
@@ -393,10 +393,38 @@ Memory barriers and fences
 
 # CPU Features
 
-@TODO r2 specifies a number which refers to feature-set and r1 is a bitfield for the available features on that set.
+The `cpufeat r0, r1` instruction is used to query the CPU for information. It is the best way to figure out the byte size of registers and whether floating point instructions are supported. The second operand specifies the **Feature ID** and the first operand is the result, set based on the feature ID see table below.
+
+Feature IDs not supported or known by the CPU returns 0. The same applies for bitfields, they are cleared.
+
+|Feature ID|Name|Description|
+|-|-|-|
+|0|CPUFEAT_REG_BYTES|Result is the byte size of a register. 2/4/8 for 16/32/64-bit CPU respectively.|
+|1|CPUFEAT_FEATURES0|Bitfield of non-standard features. Reserved for future use.|
+|2|CPUFEAT_FEATURES1|Reserved for future use.|
+
+## CPUFEAT_FEATURES0
+The table below describes the bits returned by the feature id.
+
+|Bit|Name|Description|
+|-|-|-|
+|0|CPUFEAT_FEATURES0_FLOAT|Floating point support exists. This is not implemented at the moment.|
+
+## Example
 
 ```arm
-cpufeat r1, r2
+#include "tests/cpufeat-defs.s"
+
+// Register's byte size
+li r1, #CPUFEAT_REG_BYTES
+cpufeat r0, r1
+// r0 = 2, 4, 8 depending on CPU architecture.
+
+// Check floating point support
+li r1, #CPUFEAT_FEATURES0
+cpufeat r0, r1
+li r1, #CPUFEAT_FEATURES0_FLOAT
+and r0, r0, r1
 ```
 
 # Save and restore

@@ -635,7 +635,8 @@ void emulator_enter_vector(CoreState* core, int vector) {
     //   Reason it should be tripple fault is that we can't enter the vector so CPU must shutdown.
     //   Which it will eventually.
     mmu_operation(core, MMU_READ, eh_address, entrySize, &ex_handler, true);
-
+    printf("vectorEntry=0x%zx handler=0x%zx\n", eh_address, ex_handler);
+    
     core->crepc = core->pc;
     core->cresp = core->sp;
     core->crestatus = core->crstatus;
@@ -941,7 +942,12 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
 
             next_pc = pc + bytes;
 
-            LOG_INST("%s\n", opcode_to_string(opcode));
+            char regname0[20];
+            char regname1[20];
+
+            LOG_INST("%s %s, %s=0x%zx\n", opcode_to_string(opcode),
+                cr_to_string(regs[0], regname0),
+                gpr_to_string(regs[1], regname1), core->gprs[regs[1]]);
         } break;
         case OPCODE_MFCR:
         {
@@ -954,7 +960,13 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
             core->gprs[regs[0]] = core->crs[regs[1]];
 
             next_pc = pc + bytes;
-            LOG_INST("%s\n", opcode_to_string(opcode));
+
+            char regname0[20];
+            char regname1[20];
+
+            LOG_INST("%s %s, %s=0x%zx\n", opcode_to_string(opcode),
+                gpr_to_string(regs[0], regname0),
+                cr_to_string(regs[1], regname1), core->crs[regs[1]]);
         } break;
         case OPCODE_MSCR:
         {
@@ -969,7 +981,13 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
             core->crs[regs[1]] = tmp;
 
             next_pc = pc + bytes;
-            LOG_INST("%s\n", opcode_to_string(opcode));
+
+            char regname0[20];
+            char regname1[20];
+
+            LOG_INST("%s %s=0x%zx, %s=0x%zx\n", opcode_to_string(opcode),
+                gpr_to_string(regs[0], regname0), core->gprs[regs[0]],
+                cr_to_string(regs[1], regname1), core->crs[regs[1]]);
         } break;
         case OPCODE_ADD:
         case OPCODE_SUB:
@@ -1010,6 +1028,17 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
                 leftSigned  = (int64_t)(uint64_t)core->gprs[regs[1]];
                 rightSigned = (int64_t)(uint64_t)core->gprs[regs[2]];
             }
+
+            if (opcode == OPCODE_UDIV || opcode == OPCODE_UMOD) {
+                if (right == 0) {
+                    emulator_trigger_exception(core, VECTOR_DIVISION_BY_ZERO);
+                }
+            } else if (opcode == OPCODE_SDIV || opcode == OPCODE_SMOD) {
+                if (rightSigned == 0) {
+                    emulator_trigger_exception(core, VECTOR_DIVISION_BY_ZERO);
+                }
+            }
+
             switch (opcode) {
                 case OPCODE_ADD:  result = left + right; break;
                 case OPCODE_SUB:  result = left - right; break;
@@ -1442,8 +1471,28 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
         } break;
         case OPCODE_CPUFEAT:
         {
-            LOG_INST("%s\n", opcode_to_string(opcode));
-            INCOMPLETE_INST("TODO implement cpufeat\n");
+            bytes = decode_form_reg2(core, pc, NULL, regs);
+            check_registers(core, regs, 2);
+
+            FeatureID featureID = core->gprs[regs[1]];
+            uint64_t result = 0;
+
+            switch (featureID) {
+                case CPUFEAT_REG_BYTES: {
+                    result = REGISTER_BYTESIZE();
+                } break;
+                default: {
+                    result = 0;
+                } break;
+            }
+
+            core->gprs[regs[0]] = result;
+
+            next_pc = pc + bytes;
+
+            char regname0[20];
+            char regname1[20];
+            LOG_INST("%s %s=0x%zx, %s=%d\n", opcode_to_string(opcode), gpr_to_string(regs[0], regname0), result, gpr_to_string(regs[1], regname1), featureID);
         } break;
         case OPCODE_VMSTART:
         {

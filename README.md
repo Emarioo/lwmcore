@@ -104,15 +104,52 @@ tests/run.py
 - [x] Local jumps in assembler `.loop ->  lock.loop`
 - [x] Include directive in assembler.
 - [x] Platform config.
+- [x] Test some 32-bit and 64-bit mode.
 - [ ] Put MMIO address definitions in a file where programs can include them so i don't have to update them everywhere.
 - [ ] Operand checks in assembler. Using immediate where only register is allowed for example.
 - [ ] Make a test suite with some basic programs. Prime numbers, bubble sort, extensive instruction testing. Testing should be done for 16/32/64 don't forget that!
-- [ ] Test 32-bit and 64-bit mode.
 - [ ] Resolve TODOs in code.
 - [ ] Finish CPU ISA. A revision for CPU encodings in the future is planned along with generating C code to encode/decode the opcodes from a scheme.
 - [ ] Finish assembler guide/spec?. preprocessor, labels, sections.
 - [ ] Finish emulator guide. Arguments. A little on HardwareDevice and how to emulate MMIO devices.
 - [ ] Finish quick guide to the emulator, assembler, and CPU.
+
+## Test cases
+
+Exceptions
+---------
+- [x] Illegal instruction
+- [x] Debug breakpoint
+- [x] Division by zero
+- [ ] Protection fault
+- [ ] Page fault
+- [ ] Double fault
+- [ ] Misaligned Access (if we decide to implement it)
+
+Paging
+---------
+- [ ] READ
+- [ ] WRITE
+- [ ] EXECUTE
+- [ ] USER
+
+Interrupts
+---------
+- [ ] Timer, includes rdtick instruction
+- [ ] UART
+- [ ] EINT
+- [ ] DINT
+
+User mode
+---------
+- [ ] SYSCALL
+- [ ] VRET
+
+Multicore
+---------
+- [ ] VMSTART
+- [ ] Shared memory
+- [ ] IPIs
 
 # Future TODOs
 - [ ] Disk device

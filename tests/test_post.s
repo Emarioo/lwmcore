@@ -7,10 +7,18 @@ total_tests:
     long
 passed_tests:
     long
-coverage_vector:
-    byte[#counter]
 coverage_vector_size:
     long #counter
+coverage_vector:
+    byte[#counter]
+/*
+  @TODO The vector array is 1 byte bigger than it needs to be.
+    We don't support constant expressions so not much we can do.
+    But it also means we don't get "Array can't have zero length".
+    Happens if you comment out tests to debug issues.
+    But if we have zero tests then we want a warning or error because
+    we should always have at least one.
+*/
 
 msg_passed:
     byte[] "Passed #\0"
@@ -81,8 +89,6 @@ test_finish:
     # Check test coverage
 
     #LOAD r3, [coverage_vector_size]
-    li r1, 1
-    sub r3, r3, r1
 
     li r4, 0
     li r2, 0
