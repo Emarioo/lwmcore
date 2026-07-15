@@ -146,16 +146,17 @@ Interrupts
 
 Paging
 ---------
-- [ ] Page tables for 16/32/64-bit CPUs.
-- [ ] Enable/disable paging
-- [ ] Page fault on READ-only
-- [ ] Page fault on WRITE
-- [ ] Page fault on EXECUTE
-- [ ] Page fault on USER
+- [x] Page tables for 16/32/64-bit CPUs.
+- [x] Enable/disable paging (we test enabling, not disabling)
+- [x] Page fault on READ-only
+- [x] Page fault on WRITE
+- [x] Page fault on EXECUTE
+- [x] Page fault on USER
 
 User mode
 ---------
 - [ ] Protection fault, on all instructions that should be privileged.
+- [ ] Running code in user mode. Page fault with USER BIT set.
 - [ ] SYSCALL
 - [ ] VRET
 

@@ -138,14 +138,15 @@ The fault is caused by a disallowed access to a virtual address.
 
 - `CREPC` will hold the program counter where the instruction causing the page fault begins.
 - `CRFAULT` contains the virtual address that was denied.
-- `CRCAUSE` describes the reason for the fault.
+- `CRCAUSE` describes the reason for the fault. Is always non-zero.
 
 |CRCAUSE bit|Reason|Description|
 |-|-|-|
 |0|Not present|Address is not mapped in the page table.|
 |1|Denied user|The CPU is in User mode and the address has the User bit cleared requiring Supervisor mode to access it.|
-|2|Denied write|A write to the address was denied because write bit in page entry is cleared.|
-|3|Denied execute|An instruction decode on the address was denied because execute bit in page entry is cleared.|
+|2|Denied read|A read to the address was denied because read bit in page entry is cleared.|
+|3|Denied write|A write to the address was denied because write bit in page entry is cleared.|
+|4|Denied execute|An instruction decode on the address was denied because execute bit in page entry is cleared.|
 
 ### Double Fault
 

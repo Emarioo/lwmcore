@@ -43,6 +43,7 @@ typedef enum {
 #define PAGE_BIT_READ        ((size_t)0x4)
 #define PAGE_BIT_WRITE       ((size_t)0x8)
 #define PAGE_BIT_EXECUTE     ((size_t)0x10)
+#define PAGE_BIT_HUGE        ((size_t)0x20)
 
 
 #define VECTOR_ILLEGAL_INSTRUCTION  1

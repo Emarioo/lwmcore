@@ -74,95 +74,142 @@ typedef enum {
     MMU_READ_EXEC,
 } MMUOperation;
 
-void mmu_operation(CoreState* core, MMUOperation operation, uint64_t address, uint64_t size, void* data, bool physical) {
+void mmu_check_flags(CoreState* core, MMUOperation operation, uintptr_t virt_address, int flags) {
+
+    #define SET_CAUSE(ACCESS_FLAG) do { core->crfault = virt_address; core->crcause = ACCESS_FLAG; } while (0)
+
+    int mmuOpCause;
+    switch (operation) {
+        case MMU_READ: {
+            mmuOpCause = CRCAUSE_READ;
+        } break;
+        case MMU_WRITE: {
+            mmuOpCause = CRCAUSE_WRITE;
+        } break;
+        case MMU_READ_EXEC: {
+            mmuOpCause = CRCAUSE_EXECUTE;
+        } break;
+    }
+
+    if (!(flags & PAGE_BIT_PRESENT)) {
+        SET_CAUSE(mmuOpCause);
+        emulator_trigger_exception(core, VECTOR_PAGE_FAULT);
+    }
+    mmuOpCause |= CRCAUSE_PRESENT;
+
+    if (USER_ENABLED() && !(flags & PAGE_BIT_USER)) {
+        SET_CAUSE(CRCAUSE_USER | mmuOpCause);
+        emulator_trigger_exception(core, VECTOR_PAGE_FAULT);
+    }
+
+    switch (operation) {
+        case MMU_READ: {
+            if (!(flags & PAGE_BIT_READ)) {
+                SET_CAUSE(mmuOpCause);
+                emulator_trigger_exception(core, VECTOR_PAGE_FAULT);
+            }
+        } break;
+        case MMU_WRITE: {
+            if (!(flags & PAGE_BIT_WRITE)) {
+                SET_CAUSE(mmuOpCause);
+                emulator_trigger_exception(core, VECTOR_PAGE_FAULT);
+            }
+        } break;
+        case MMU_READ_EXEC: {
+            if (!(flags & PAGE_BIT_EXECUTE)) {
+                SET_CAUSE(mmuOpCause);
+                emulator_trigger_exception(core, VECTOR_PAGE_FAULT);
+            }
+        } break;
+    }
+}
+
+void mmu_operation(CoreState* core, MMUOperation operation, uint64_t in_address, uint64_t size, void* data, bool physical) {
     EmulatorContext* emulator = core->emulator;
-    
-    // printf("ACCESS 0x%zx\n", address);
 
-    if (operation != MMU_READ_EXEC && 0 != ((size-1) & address)) {
-        // I am not 100% if all access have to be aligned.
-        // I know that atomic instructions should cause misaligned access at least.
-        // In emulator it doesn't matter but it makes hardware implementation easier.
-        // Software want acceses to be aligned anyway for speed so we might as well enforce it?
-
+    if (operation != MMU_READ_EXEC && 0 != ((size-1) & in_address)) {
         // @TODO Misaligned access (crfault/crcause) is not documented.
         //   CRCAUSE should provide the access size, read/write MMU operation.
-        core->crfault = address;
+        core->crfault = in_address;
         core->crcause = size;
-        printf("MISALIGNED at 0x%zx, 0x%zx, %zd bytes\n", core->pc, address, size);
+        printf("MISALIGNED at 0x%zx, 0x%zx, %zd bytes\n", core->pc, in_address, size);
         emulator_trigger_exception(core, VECTOR_MISALIGNED_ACCESS);
     }
 
 
     uintptr_t phys_address;
     if (physical || !PAGING_ENABLED()) {
-        phys_address = address;
+        phys_address = in_address;
     } else {
-        const uintptr_t virt_address = address;
-        int flags;
-        uintptr_t rootPageTable = core->crpt;
-
-        int offset = virt_address & 0xFFF;
+        const uintptr_t virt_address = in_address;
+        uint32_t flags;
+        uint32_t index;
+        uintptr_t pageDirectory = core->crpt;
+        
+        uintptr_t offset = virt_address & 0xFFF;
         if (core->mode == MODE_16) {
-            int index = (virt_address >> 12) & 0x3FF;
             uint32_t entry;
-            mmu_operation(core, MMU_READ, rootPageTable + index * 4, 4, &entry, true);
+            
+            index = (virt_address >> 12) & 0x3FF;
+            mmu_operation(core, MMU_READ, pageDirectory + index * 4, 4, &entry, true);
+            flags = entry & 0xFFF;
+            mmu_check_flags(core, operation, virt_address, flags);
             
             phys_address = entry & 0x3FF000; // 22-bit address space, lower 12 bits unused
             phys_address += offset;
+            
+        } else if (core->mode == MODE_32) {
+            uint32_t entry;
+
+            // @TODO Implement huge bit
+            
+            index = (virt_address >> 22) & 0x3FF;
+            mmu_operation(core, MMU_READ, pageDirectory + index * 4, 4, &entry, true);
             flags = entry & 0xFFF;
+            mmu_check_flags(core, operation, virt_address, flags);
+            pageDirectory = entry & 0xFFFFF000;
+            
+            index = (virt_address >> 12) & 0x3FF;
+            mmu_operation(core, MMU_READ, pageDirectory + index * 4, 4, &entry, true);
+            flags = entry & 0xFFF;
+            mmu_check_flags(core, operation, virt_address, flags);
+            
+            phys_address = entry & 0xFFFFF000; // 32-bit address space, lower 12 bits unused
+            phys_address += offset;
 
-            #define SET_CAUSE(ACCESS_FLAG) do { core->crfault = virt_address; core->crcause = ACCESS_FLAG; } while (0)
+        } else if (core->mode == MODE_64) {
+            uint64_t entry;
+            
+            // @TODO Implement huge bit
 
-            int mmuOpCause;
-            switch (operation) {
-                case MMU_READ: {
-                    mmuOpCause = CRCAUSE_READ;
-                } break;
-                case MMU_WRITE: {
-                    mmuOpCause = CRCAUSE_WRITE;
-                } break;
-                case MMU_READ_EXEC: {
-                    mmuOpCause = CRCAUSE_EXECUTE;
-                } break;
-            }
+            index = (virt_address >> 39) & 0x1FF;
+            mmu_operation(core, MMU_READ, pageDirectory + index * 8, 8, &entry, true);
+            flags = entry & 0xFFF;
+            mmu_check_flags(core, operation, virt_address, flags);
+            pageDirectory = entry & 0xFFFFFFFFF000;
 
-            if (!(flags & PAGE_BIT_PRESENT)) {
-                SET_CAUSE(mmuOpCause);
-                emulator_trigger_exception(core, VECTOR_PAGE_FAULT);
-            }
-            mmuOpCause |= CRCAUSE_PRESENT;
+            index = (virt_address >> 30) & 0x1FF;
+            mmu_operation(core, MMU_READ, pageDirectory + index * 8, 8, &entry, true);
+            flags = entry & 0xFFF;
+            mmu_check_flags(core, operation, virt_address, flags);
+            pageDirectory = entry & 0xFFFFFFFFF000;
+            
+            index = (virt_address >> 21) & 0x1FF;
+            mmu_operation(core, MMU_READ, pageDirectory + index * 8, 8, &entry, true);
+            flags = entry & 0xFFF;
+            mmu_check_flags(core, operation, virt_address, flags);
+            pageDirectory = entry & 0xFFFFFFFFF000;
 
-            if (USER_ENABLED() && !(flags & PAGE_BIT_USER)) {
-                SET_CAUSE(CRCAUSE_USER | mmuOpCause);
-                emulator_trigger_exception(core, VECTOR_PAGE_FAULT);
-            }
-
-            switch (operation) {
-                case MMU_READ: {
-                    if (!(flags & PAGE_BIT_READ)) {
-                        SET_CAUSE(mmuOpCause);
-                        emulator_trigger_exception(core, VECTOR_PAGE_FAULT);
-                    }
-                } break;
-                case MMU_WRITE: {
-                    if (!(flags & PAGE_BIT_WRITE)) {
-                        SET_CAUSE(mmuOpCause);
-                        emulator_trigger_exception(core, VECTOR_PAGE_FAULT);
-                    }
-                } break;
-                case MMU_READ_EXEC: {
-                    if (!(flags & PAGE_BIT_EXECUTE)) {
-                        SET_CAUSE(mmuOpCause);
-                        emulator_trigger_exception(core, VECTOR_PAGE_FAULT);
-                    }
-                } break;
-            }
+            index = (virt_address >> 12) & 0x1FF;
+            mmu_operation(core, MMU_READ, pageDirectory + index * 8, 8, &entry, true);
+            flags = entry & 0xFFF;
+            mmu_check_flags(core, operation, virt_address, flags);
+            
+            phys_address = entry & 0xFFFFFFFFF000; // 48-bit address space, lower 12 bits unused
+            phys_address += offset;
 
         } else {
-            // @TODO Implement paging for 32/64-bit. 32/64-bit hasn't been tested at all.
-            printf("Paging for 32/64-bit not implemented.\n");
-            hard_fault(core);
+            Assert(false);
         }
 
     }
@@ -173,7 +220,7 @@ void mmu_operation(CoreState* core, MMUOperation operation, uint64_t address, ui
             case MMU_READ:
             case MMU_READ_EXEC: {
                 if (dev->mmio_read) {
-                    bool res = dev->mmio_read(emulator, dev, address, size, data);
+                    bool res = dev->mmio_read(emulator, dev, phys_address, size, data);
                     if (res) {
                         return;
                     }
@@ -181,7 +228,7 @@ void mmu_operation(CoreState* core, MMUOperation operation, uint64_t address, ui
             } break;
             case MMU_WRITE: {
                 if (dev->mmio_write) {
-                    bool res = dev->mmio_write(emulator, dev, address, size, data);
+                    bool res = dev->mmio_write(emulator, dev, phys_address, size, data);
                     if (res) {
                         return;
                     }
@@ -190,28 +237,29 @@ void mmu_operation(CoreState* core, MMUOperation operation, uint64_t address, ui
         }
     }
 
-    if (address > emulator->physicalMemory_size - size) {
-        printf("BUS ERROR at 0x%zx, outside physical memory 0x%zx\n", address, emulator->physicalMemory_size);
+    if (phys_address > emulator->physicalMemory_size - size) {
+        printf("BUS ERROR at 0x%zx, outside physical memory 0x%zx\n", phys_address, emulator->physicalMemory_size);
         emulator_trigger_exception(core, VECTOR_BUS_ERROR);
         return;
     }
+    void* emu_address = emulator->physicalMemory + phys_address;
     switch (operation) {
         case MMU_READ:
         case MMU_READ_EXEC: {
             switch (size) {
-                case 1: *(uint8_t*)data = *(uint8_t*)&emulator->physicalMemory[address]; break;
-                case 2: *(uint16_t*)data = *(uint16_t*)&emulator->physicalMemory[address]; break;
-                case 4: *(uint32_t*)data = *(uint32_t*)&emulator->physicalMemory[address]; break;
-                case 8: *(uint64_t*)data = *(uint64_t*)&emulator->physicalMemory[address]; break;
+                case 1:  *(uint8_t*)data =  *(uint8_t*)emu_address; break;
+                case 2: *(uint16_t*)data = *(uint16_t*)emu_address; break;
+                case 4: *(uint32_t*)data = *(uint32_t*)emu_address; break;
+                case 8: *(uint64_t*)data = *(uint64_t*)emu_address; break;
                 default: Assert(false);
             }
         } break;
         case MMU_WRITE: {
             switch (size) {
-                case 1: *(uint8_t*)&emulator->physicalMemory[address] = *(uint8_t*)data; break;
-                case 2: *(uint16_t*)&emulator->physicalMemory[address] = *(uint16_t*)data; break;
-                case 4: *(uint32_t*)&emulator->physicalMemory[address] = *(uint32_t*)data; break;
-                case 8: *(uint64_t*)&emulator->physicalMemory[address] = *(uint64_t*)data; break;
+                case 1:  *(uint8_t*)emu_address =  *(uint8_t*)data; break;
+                case 2: *(uint16_t*)emu_address = *(uint16_t*)data; break;
+                case 4: *(uint32_t*)emu_address = *(uint32_t*)data; break;
+                case 8: *(uint64_t*)emu_address = *(uint64_t*)data; break;
                 default: Assert(false);
             }
         } break;
@@ -648,7 +696,7 @@ void emulator_enter_vector(CoreState* core, int vector) {
     //   Reason it should be tripple fault is that we can't enter the vector so CPU must shutdown.
     //   Which it will eventually.
     mmu_operation(core, MMU_READ, eh_address, entrySize, &ex_handler, true);
-    // printf("vectorEntry=0x%zx handler=0x%zx\n", eh_address, ex_handler);
+    // printf("vectorEntry=0x%zx handler=0x%zx fault=0x%zx cause=0x%zx\n", eh_address, ex_handler, core->crfault, core->crcause);
     
     core->crepc = core->pc;
     core->cresp = core->sp;

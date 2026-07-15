@@ -12,6 +12,15 @@ TEST_CONFIGS = {
         "tests/configs/lwm32.cfg",
         "tests/configs/lwm64.cfg",
     ],
+    "lwm16": [
+        "tests/configs/lwm16.cfg",
+    ],
+    "lwm32": [
+        "tests/configs/lwm32.cfg",
+    ],
+    "lwm64": [
+        "tests/configs/lwm64.cfg",
+    ],
     "min_lwm32": [
         "tests/configs/lwm32.cfg",
         "tests/configs/lwm64.cfg",
@@ -23,6 +32,8 @@ TEST_CONFIGS = {
 
 VERBOSE = False
 
+LWM_FLAGS = "-q"
+
 def collect_tests():
     tests = []
     for test_dir in glob.glob(f"{ROOT}/tests/instructions/*"):
@@ -33,6 +44,12 @@ def collect_tests():
 class FailException(BaseException):
     def __init__(self):
         pass
+
+class TestRunner:
+    def __init__(self):
+        self.totalSubTests = 0
+        self.passedSubTests = 0
+
 
 def cmd(c: str, silent: bool = False):
     c = c.replace("\\", "/")
@@ -76,7 +93,7 @@ def run_stdout_test(test_dir):
         return False
     expected = text[start_index:end_index].strip()
     
-    proc = subprocess.run(shlex.split(f"{LWM} {test_dir} -e -q"), text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    proc = subprocess.run(shlex.split(f"{LWM} {test_dir} -e {LWM_FLAGS}"), text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
     result = proc.stdout.strip()
 
@@ -92,7 +109,7 @@ def run_stdout_test(test_dir):
     return True
 
 
-def run_test(test_dir):
+def run_test(runner: TestRunner, test_dir):
     # print(f"Running {test_dir}")
 
     # c_files = glob.glob(f"{test_dir}/*.c", recursive=True)
@@ -120,7 +137,7 @@ def run_test(test_dir):
         if not os.path.exists(platformConfig):
             print(f"\033[31mFAILED\033[0m {platformConfig} ({m.groups()[0]}) could not be found.")
             return False
-        proc = subprocess.run(shlex.split(f"{LWM} {test_dir} -e -q -p {platformConfig}"), text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        proc = subprocess.run(shlex.split(f"{LWM} {test_dir} -e {LWM_FLAGS} -p {platformConfig}"), text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
         out_text = proc.stdout.strip()
 
@@ -130,6 +147,8 @@ def run_test(test_dir):
         failed = coverage is None or result is None or len(coverage.groups()) != 2 or len(result.groups()) != 2
         if not failed:
             failed = int(coverage.groups()[0]) != int(coverage.groups()[1]) or int(result.groups()[0]) != int(result.groups()[1])
+            runner.totalSubTests += int(result.groups()[1])
+            runner.passedSubTests += int(result.groups()[0])
 
         if failed:
             print(f"\033[31mFAILED\033[0m {name} {basePlatformConfig}")
@@ -153,9 +172,9 @@ def clean_tests(test_dirs):
 
 def main(args):
     global VERBOSE
+    global LWM_FLAGS
     tests_to_run = []
     should_clean_tests = False
-    verbose = False
     argi = 1
     while argi < len(args):
         arg = args[argi]
@@ -168,8 +187,9 @@ def main(args):
         elif arg == '--clean' or arg == '-c':
             should_clean_tests = True
         elif arg == '-v' or arg == '--verbose':
-            verbose = True
             VERBOSE = True
+        elif arg == '-d':
+            LWM_FLAGS = "-d"
         elif arg[0] == '-':
             print(f"\033[31mERROR:\033[0m Unknown flag '{arg}'")
             exit(1)
@@ -193,10 +213,12 @@ def main(args):
     total_tests = len(tests)
     passed_tests = 0
 
+    runner = TestRunner()
+
     for test_dir in tests:
         test_dir = test_dir.replace('\\','/')
         try:
-            res = run_test(test_dir)
+            res = run_test(runner, test_dir)
             if res:
                 passed_tests += 1
             
@@ -204,9 +226,9 @@ def main(args):
             pass
     
     if passed_tests == total_tests:
-        print(f"\033[32mSUCCESS\033[0m {passed_tests}/{total_tests}")
+        print(f"\033[32mSUCCESS\033[0m {passed_tests}/{total_tests} (subtests {runner.passedSubTests}/{runner.totalSubTests})")
     else:
-        print(f"\033[31mFAILURE\033[0m {passed_tests}/{total_tests}")
+        print(f"\033[31mFAILURE\033[0m {passed_tests}/{total_tests} (subtests {runner.passedSubTests}/{runner.totalSubTests})")
 
 
 if __name__ == "__main__":
