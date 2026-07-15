@@ -345,6 +345,18 @@ rdtick r1, r2, r3, r4
 # r4 = bits 63:48
 ```
 
+
+The timer's compare value is set through `advtimer`.
+
+```arm
+#define TICKS_PER_MS 1000000 // should be measured or retrieved from firmware or cpufeat?
+
+li r0, 10 * TICKS_PER_MS
+advtimer r0
+// COMPARE_VALUE = TICK_COUNTER + r0
+```
+
+**Will CRTIMERCMP be deprecated?**
 The timer's compare value is set through a control register.
 
 ```arm
@@ -354,6 +366,7 @@ rdtick r0
 add r0, 10 * TICKS_PER_MS
 mtcr CRTIMERCMP, r0
 ```
+
 
 
 # Booting and Multicore
@@ -691,6 +704,7 @@ lea r0, [r1 + r2*scale + disp]
 |syscall|System call|
 |vret|Vector return|
 |rdtick|Read tick counter|
+|advtimer|Advance timer|
 |dbg|Debug break. One byte opcode.|
 |cpufeat|CPU features|
 |eint|Enable interrupts|

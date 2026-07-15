@@ -3,48 +3,44 @@
 #define UART_BASE 0xF004
 #define LOG_BASE 0xF008
 
-section .data 0xa0
-
-ex_msg:
-    byte[] "EXCEPTION\n\0"
-timer_msg:
-    byte[] "TIMER\n\0"
-done_msg:
-    byte[] "DONE\n\0"
-
-hit_timer:
-    byte 0
-
-counter:
-    long 0
-
 section .text 0
 
-
 main:
-    li sp, 0x100
+    li sp, 0x1000
 
     call init_vector
 
     rdtick r0, r1, r2, r3
 
     eint
-    
+
+    /*
+    Observed values:
+        70 ticks  -> counter = 12
+        140 ticks -> counter = 23
+    */
     li r4, 70
-    add r0, r0, r4
-    mtcr CRTIMERCMP, r0
+    ; add r0, r0, r4
+    ; mtcr CRTIMERCMP, r0
+    advtimer r4
 
 loop:
-    ldl r6, [counter]
+    ldh r6, [counter]
     li r5, 1
     add r6, r6, r5
-    stl r6, [counter]
+    sth r6, [counter]
 
     ldb r5, [hit_timer]
     jz r5, loop
 
     lea r0, [done_msg]
-    call putstring
+        call putstring
+
+    ldh r0, [counter]
+        call putint
+
+    li r0, '\n'
+        call putchar
     
     hlt
 
@@ -74,6 +70,49 @@ putstring:
     ret
 
 
+/*
+    void putint(int num);
+      r0 = num
+*/
+putint:
+    push lr
+    push r1
+    push r2
+    push r3
+
+    mov r2, r0
+
+    lea r3, [sp + -1]
+    lea sp, [sp - 24]
+
+    li r0, '\0'
+    stb r0, [r3]
+
+.loop:
+    li r1, 10
+    umod r0, r2, r1
+    udiv r2, r2, r1
+
+    li r1, '0'
+    add r0, r0, r1
+    lea r3, [r3 - 1]
+    stb r0, [r3]
+    
+    jnz r2, .loop
+
+    mov r0, r3
+    call putstring
+
+    lea sp, [sp + 24]
+
+    pop r3
+    pop r2
+    pop r1
+    pop lr
+    ret
+
+
+
 init_vector:
     lea r0, [vector]
     mtcr CRVB, r0
@@ -93,14 +132,26 @@ init_vector:
 
     ret
 
-section .eh 0xC0
+ex_msg:
+    byte[] "EXCEPTION\n\0"
+timer_msg:
+    byte[] "TIMER\n\0"
+done_msg:
+    byte[] "Counter: \0"
+
+hit_timer:
+    byte 0
+
+align 4
+counter:
+    long 0
+
 ex_handler:
     mfcr sp, CRESP
     lea r0, [ex_msg]
     call putstring
     hlt
 
-section .eh2 0xD0
 ex_handler_timer:
     mfcr sp, CRESP
     mov r9, r0
@@ -114,6 +165,6 @@ ex_handler_timer:
     vret
 
 
-section .vector 0x100
+align 0x10
 vector:
     long[12]

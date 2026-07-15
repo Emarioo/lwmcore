@@ -94,7 +94,6 @@ typedef struct {
     const char* rom_path;
     void*       rom;
     int         rom_len;
-    uint64_t    rom_load_address;
     
     uint64_t core_entry;
     uint64_t ram_size;

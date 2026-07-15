@@ -559,6 +559,10 @@ bool preprocess_text(ParserContext* context, const string in_text, string* out_t
     context->spans[0].dst_start = 0;
     context->spans[0].dst_end = 0;
 
+    int         includesToSkip_max = 100;
+    int         includesToSkip_len = 0;
+    const char** includesToSkip = malloc(sizeof(char*) * 100);
+
 
     int              includeStack_len = 0;
     int              includeStack_max = 50;
@@ -623,6 +627,18 @@ bool preprocess_text(ParserContext* context, const string in_text, string* out_t
                 ERROR_SRC_RET(head, "Expected a path in quotes.\n");
             }
             
+            bool skipped = false;
+            for (int i=0;i<includesToSkip_len;i++) {
+                const char* path = includesToSkip[i];
+                if (equal(includePath, path)) {
+                    skipped = true;
+                    break;
+                }
+            }
+            if (skipped) {
+                continue;
+            }
+            
             char*  fileBuffer;
             size_t fileBuffer_len;
             int res = readFile(includePath.ptr, (void**)&fileBuffer, &fileBuffer_len);
@@ -637,6 +653,24 @@ bool preprocess_text(ParserContext* context, const string in_text, string* out_t
 
             continue;
 
+        } else if (equal(macroName, "pragma")) {
+            parse_space(context, &head);
+
+            int headAfterPragma = head;
+
+            int parsedChars = parse_name(context, &head, &macroName);
+            if (!parsedChars) {
+                ERROR_SRC_RET(head, "Expected a word like 'once'.\n");
+            }
+            
+            if (equal(macroName, "once")) {
+                Assert(includesToSkip_len < includesToSkip_max);
+                includesToSkip[includesToSkip_len] = context->path;
+                includesToSkip_len++;
+            } else {
+                ERROR_SRC_RET(headAfterPragma, "Only 'pragma once' is supported.\n");
+            }
+            continue;
         } else if (equal(macroName, "define")) {
             
             parsedChars = parse_space(context, &head);

@@ -26,12 +26,15 @@ main:
 value8:
     byte 0
 
+align 2
 value16:
     short 0
 
+align 4
 value32:
     long 0
 
+align 8
 value64:
     quad 0
 

@@ -188,10 +188,20 @@ void emit_rdtick(Builder* builder, int reg0) {
     EMIT_REG1(OPCODE_RDTICK);
 }
 void emit_rdtick1(Builder* builder, int reg0, int reg1) {
-    EMIT_REG1(OPCODE_RDTICK1);
+    EMIT_REG2(OPCODE_RDTICK1);
 }
 void emit_rdtick2(Builder* builder, int reg0, int reg1, int reg2, int reg3) {
-    EMIT_REG1(OPCODE_RDTICK2);
+    EMIT_REG4(OPCODE_RDTICK2);
+}
+
+void emit_advtimer(Builder* builder, int reg0) {
+    EMIT_REG1(OPCODE_ADVTIMER);
+}
+void emit_advtimer1(Builder* builder, int reg0, int reg1) {
+    EMIT_REG2(OPCODE_ADVTIMER1);
+}
+void emit_advtimer2(Builder* builder, int reg0, int reg1, int reg2, int reg3) {
+    EMIT_REG4(OPCODE_ADVTIMER2);
 }
 
 void emit_not(Builder* builder, int reg0, int reg1) {

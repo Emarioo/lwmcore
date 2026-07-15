@@ -842,6 +842,7 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
         else CASE_OPCODE("restore", OPCODE_RESTORE)
         else CASE_OPCODE("tlbflush", OPCODE_TLBFLUSH) 
         else CASE_OPCODE("rdtick", OPCODE_RDTICK)
+        else CASE_OPCODE("advtimer", OPCODE_ADVTIMER)
         else {
             ERROR_SRC_RET(location_head, "Unknown instruction '%s'\n", name.ptr);
         }
@@ -1251,6 +1252,19 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
                         emit_rdtick1(builder, inst->operands[0].regnum, inst->operands[1].regnum);
                     } else if (inst->operands_len == 4) {
                         emit_rdtick2(builder, inst->operands[0].regnum, inst->operands[1].regnum, inst->operands[2].regnum, inst->operands[3].regnum);
+                    } else {
+                        Assert(false);
+                    }
+                } break;
+                case OPCODE_ADVTIMER:
+                case OPCODE_ADVTIMER1:
+                case OPCODE_ADVTIMER2: {
+                    if (inst->operands_len == 1) {
+                        emit_advtimer(builder, inst->operands[0].regnum);
+                    } else if (inst->operands_len == 2) {
+                        emit_advtimer1(builder, inst->operands[0].regnum, inst->operands[1].regnum);
+                    } else if (inst->operands_len == 4) {
+                        emit_advtimer2(builder, inst->operands[0].regnum, inst->operands[1].regnum, inst->operands[2].regnum, inst->operands[3].regnum);
                     } else {
                         Assert(false);
                     }

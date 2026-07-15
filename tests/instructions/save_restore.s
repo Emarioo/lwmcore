@@ -133,6 +133,7 @@ test_stack_ptr:
     pop lr
     ret
 
+align 0x10
 context:
     byte[256] // 256=32*8 for just general purpose registers
 

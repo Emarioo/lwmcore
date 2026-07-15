@@ -24,9 +24,22 @@ after_div:
     li r8, 33
     dbg
 
+    li r8, 44
+    lea r9, [after_mis]
+    ldh r0, [misaligned_short]
+after_mis:
+
+    # @TODO Add more misaligned access tests. For store, different addressing forms
+    #   for save/restore instructions. For different alignment sizes on 16/32/64-bit CPUs.
+    #   Check CRFAULT, CRCAUSE contain correct values in misaligned handler.
+
     #TEST_POST
     hlt
 
+align 2
+    byte
+misaligned_short:
+    short 89
 
 ex_handler_ill:
     mfcr sp, CRESP
@@ -65,6 +78,17 @@ ex_handler_dbg:
     mtcr CREPC, r0
     vret
 
+ex_handler_mis:
+    mfcr sp, CRESP
+    mov r0, r8
+
+    push lr
+    #TEST(44)
+    pop lr
+
+    mtcr CREPC, r9
+    vret
+
 ex_handler:
     hlt
 
@@ -96,6 +120,7 @@ setup_vector_base:
     #endmacro
 
     #VECTOR(1, ex_handler_ill)
+    #VECTOR(5, ex_handler_mis)
     #VECTOR(7, ex_handler_div)
     #VECTOR(8, ex_handler_dbg)
 

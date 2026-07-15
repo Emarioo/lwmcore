@@ -139,6 +139,9 @@ int largest_encoding_ext(int opcode, AddressingForm form, int* lowestBytes) {
         case OPCODE_RDTICK: return 2;
         case OPCODE_RDTICK1: return 3;
         case OPCODE_RDTICK2: return 5;
+        case OPCODE_ADVTIMER: return 2;
+        case OPCODE_ADVTIMER1: return 3;
+        case OPCODE_ADVTIMER2: return 5;
     }
     Assert(false);
     return -1;
@@ -214,9 +217,12 @@ const char* opcode_to_string(int opcode) {
         CASE(OPCODE_CAS, "cas")
         CASE(OPCODE_SAVE, "save")
         CASE(OPCODE_RESTORE, "restore")
-        CASE(OPCODE_RDTICK, "rdtick")
+        CASE(OPCODE_RDTICK,  "rdtick")
         CASE(OPCODE_RDTICK1, "rdtick1")
         CASE(OPCODE_RDTICK2, "rdtick2")
+        CASE(OPCODE_ADVTIMER,  "advtimer")
+        CASE(OPCODE_ADVTIMER1, "advtimer1")
+        CASE(OPCODE_ADVTIMER2, "advtimer2")
     }
     #undef CASE
     Assert(false);

@@ -79,6 +79,21 @@ void mmu_operation(CoreState* core, MMUOperation operation, uint64_t address, ui
     
     // printf("ACCESS 0x%zx\n", address);
 
+    if (operation != MMU_READ_EXEC && 0 != ((size-1) & address)) {
+        // I am not 100% if all access have to be aligned.
+        // I know that atomic instructions should cause misaligned access at least.
+        // In emulator it doesn't matter but it makes hardware implementation easier.
+        // Software want acceses to be aligned anyway for speed so we might as well enforce it?
+
+        // @TODO Misaligned access (crfault/crcause) is not documented.
+        //   CRCAUSE should provide the access size, read/write MMU operation.
+        core->crfault = address;
+        core->crcause = size;
+        printf("MISALIGNED at 0x%zx, 0x%zx, %zd bytes\n", core->pc, address, size);
+        emulator_trigger_exception(core, VECTOR_MISALIGNED_ACCESS);
+    }
+
+
     uintptr_t phys_address;
     if (physical || !PAGING_ENABLED()) {
         phys_address = address;
@@ -629,13 +644,11 @@ void emulator_enter_vector(CoreState* core, int vector) {
     int entrySize = core->mode == MODE_64 ? 8 : 4;
     uint64_t eh_address = core->crvb + vector * entrySize;
 
-    // printf("EH addr=0x%zx crvb=0x%zx\n", eh_address, core->crvb);
-
     // @TODO If this fails then it's a triple fault. Currently on first fault this will be a double fault.
     //   Reason it should be tripple fault is that we can't enter the vector so CPU must shutdown.
     //   Which it will eventually.
     mmu_operation(core, MMU_READ, eh_address, entrySize, &ex_handler, true);
-    printf("vectorEntry=0x%zx handler=0x%zx\n", eh_address, ex_handler);
+    // printf("vectorEntry=0x%zx handler=0x%zx\n", eh_address, ex_handler);
     
     core->crepc = core->pc;
     core->cresp = core->sp;
@@ -728,6 +741,15 @@ void emulator_start(PlatformConfig* config) {
     emulator->physicalMemory = malloc(emulator->physicalMemory_size);
     memset(emulator->physicalMemory, 0xDF, emulator->physicalMemory_size);
 
+    /* @TODO Do we want a feature to load multiple ROMs at different locations.
+         For example load a kernel ROM, a user application ROM, an INITRD (initial ram disk).
+         In platform config:
+            roms = [
+                { 0x0,    "kernel.rom" },
+                { 0x2000, "initrd.rom" },
+                { 0x6000, "app.rom" },
+            ]
+    */
     memcpy(emulator->physicalMemory, config->rom, config->rom_len);
 
     for (int i=0;i<config->devices_len;i++) {
@@ -1166,10 +1188,10 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
         {
             uint64_t tickCounter = core->tickCounter;
 
-            if (opcode == OPCODE_RDTICK) {
+            if (opcode == OPCODE_RDTICK2) {
                 bytes = decode_form_reg4(core, pc, NULL, regs);
                 check_registers(core, regs, 4);
-
+                
                 core->gprs[regs[0]] = (tickCounter >>  0) & 0xFFFF;
                 core->gprs[regs[1]] = (tickCounter >> 16) & 0xFFFF;
                 core->gprs[regs[2]] = (tickCounter >> 32) & 0xFFFF;
@@ -1178,18 +1200,74 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
                 bytes = decode_form_reg2(core, pc, NULL, regs);
                 check_registers(core, regs, 2);
 
-                core->gprs[regs[0]] = (tickCounter >>  0) & 0xFFFFFFFF;
-                core->gprs[regs[1]] = (tickCounter >> 32) & 0xFFFFFFFF;
-            } else if (opcode == OPCODE_RDTICK2) {
+                if (core->mode == MODE_16) {
+                    core->gprs[regs[0]] = (tickCounter >>  0) & 0xFFFF;
+                    core->gprs[regs[1]] = (tickCounter >> 16) & 0xFFFF;
+                } else {
+                    core->gprs[regs[0]] = (tickCounter >>  0) & 0xFFFFFFFF;
+                    core->gprs[regs[1]] = (tickCounter >> 32) & 0xFFFFFFFF;
+                }
+            } else if (opcode == OPCODE_RDTICK) {
                 bytes = decode_form_reg1(core, pc, NULL, regs);
                 check_registers(core, regs, 1);
                 
-                core->gprs[regs[0]] = tickCounter;
+                if (core->mode == MODE_16) {
+                    core->gprs[regs[0]] = (tickCounter >>  0) & 0xFFFF;
+                } else if (core->mode == MODE_32) {
+                    core->gprs[regs[0]] = (tickCounter >>  0) & 0xFFFFFFFF;
+                } else {
+                    core->gprs[regs[0]] = tickCounter;
+                }
             }
 
             next_pc = pc + bytes;
 
             LOG_INST("rdtick %zu, tc=%zu\n", core->gprs[regs[0]], tickCounter);
+        } break;
+        case OPCODE_ADVTIMER:
+        case OPCODE_ADVTIMER1:
+        case OPCODE_ADVTIMER2:
+        {
+            check_privilege(core);
+
+            uint64_t delta;
+            if (opcode == OPCODE_ADVTIMER2) {
+                bytes = decode_form_reg4(core, pc, NULL, regs);
+                check_registers(core, regs, 4);
+
+                delta = ((core->gprs[regs[0]] & 0xFFFF) <<  0) |
+                        ((core->gprs[regs[1]] & 0xFFFF) << 16) |
+                        ((core->gprs[regs[2]] & 0xFFFF) << 32) |
+                        ((core->gprs[regs[3]] & 0xFFFF) << 48);
+
+            } else if (opcode == OPCODE_ADVTIMER1) {
+                bytes = decode_form_reg2(core, pc, NULL, regs);
+                check_registers(core, regs, 2);
+                
+                if (core->mode == MODE_16) {
+                    delta = ((core->gprs[regs[0]] & 0xFFFF) <<  0) |
+                            ((core->gprs[regs[1]] & 0xFFFF) << 16);
+                } else {
+                    delta = ((core->gprs[regs[0]] & 0xFFFFFFFF) <<  0) |
+                            ((core->gprs[regs[1]] & 0xFFFFFFFF) << 32);
+                }
+            } else if (opcode == OPCODE_ADVTIMER) {
+                bytes = decode_form_reg1(core, pc, NULL, regs);
+                check_registers(core, regs, 1);
+
+                if (core->mode == MODE_16) {
+                    delta = ((core->gprs[regs[0]] & 0xFFFF) <<  0);
+                } else if (core->mode == MODE_32) {
+                    delta = ((core->gprs[regs[0]] & 0xFFFFFFFF) <<  0);
+                } else {
+                    delta = core->gprs[regs[0]];
+                }
+            }
+            core->crtimercmp = core->tickCounter + delta;
+
+            next_pc = pc + bytes;
+
+            LOG_INST("advtimer delta=%zu, timercmp=%zu\n", delta, core->crtimercmp);
         } break;
         case OPCODE_JZ:
         case OPCODE_JNZ:
@@ -1629,7 +1707,6 @@ bool parse_platform_config(const char* path, PlatformConfig* config) {
     config->rom_path = NULL;
     config->rom = NULL;
     config->rom_len = 0;
-    config->rom_load_address = 0x0;
     config->ram_size = 0x400000;
 
     int head = 0;
@@ -1677,15 +1754,6 @@ bool parse_platform_config(const char* path, PlatformConfig* config) {
             }
             
             config->core_entry = value;
-
-        } else if (equal(keyname, "rom_load_address")) {
-            uint64_t value;
-            parsedChars = parse_int(context, &head, &value);
-            if (!parsedChars) {
-                ERROR_SRC_RET(head, "Expected a number.\n");
-            }
-            
-            config->rom_load_address = value;
 
         } else if (equal(keyname, "ram_size")) {
             uint64_t value;

@@ -49,7 +49,7 @@ typedef enum {
 #define VECTOR_PROTECTION_FAULT     2
 #define VECTOR_PAGE_FAULT           3
 #define VECTOR_DOUBLE_FAULT         4
-#define VECTOR_MISALIGNED           5
+#define VECTOR_MISALIGNED_ACCESS    5
 #define VECTOR_SYSCALL              6
 #define VECTOR_DIVISION_BY_ZERO     7
 #define VECTOR_BREAKPOINT           8
@@ -160,6 +160,9 @@ typedef enum {
     OPCODE_RDTICK,
     OPCODE_RDTICK1,
     OPCODE_RDTICK2,
+    OPCODE_ADVTIMER,
+    OPCODE_ADVTIMER1,
+    OPCODE_ADVTIMER2,
 } OpcodeKind;
 
 typedef enum {

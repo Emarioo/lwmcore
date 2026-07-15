@@ -116,40 +116,58 @@ tests/run.py
 
 ## Test cases
 
+These tests are not thorough and do not cover edge cases. We add rudimentary tests where
+many instructions and semantics are tested to any degree, bare minimum for testing.
+
+Fundamentals
+---
+- [x] Arithmetic
+- [x] Memory addressing
+- [x] Memory load/store byte, short, long, quad, sign-extension
+- [x] Control flow, call, jmp, conditional jump
+- [x] CPU features, just register bytesize for now
+- [x] Atomic instructions, xadd, cas, includes some testing for multicore booting
+- [x] Save and restore instructions
+
 Exceptions
 ---------
 - [x] Illegal instruction
 - [x] Debug breakpoint
 - [x] Division by zero
-- [ ] Protection fault
-- [ ] Page fault
-- [ ] Double fault
-- [ ] Misaligned Access (if we decide to implement it)
-
-Paging
----------
-- [ ] READ
-- [ ] WRITE
-- [ ] EXECUTE
-- [ ] USER
+- [x] Misaligned Access (test various instructions including save/restore? atomics, normal load/store)
+- [ ] Double fault (not super important? we can test later? how do we test it?)
 
 Interrupts
 ---------
-- [ ] Timer, includes rdtick instruction
-- [ ] UART
-- [ ] EINT
-- [ ] DINT
+- [x] Timer, includes rdtick instruction
+- [x] Enable/disable interrupts
+- [ ] External interrupts from some device. Timer interrupt is CPU internal and doesn't count. We cannot use keyboard interrupt because it requires user.
+  
+
+Paging
+---------
+- [ ] Page tables for 16/32/64-bit CPUs.
+- [ ] Enable/disable paging
+- [ ] Page fault on READ-only
+- [ ] Page fault on WRITE
+- [ ] Page fault on EXECUTE
+- [ ] Page fault on USER
 
 User mode
 ---------
+- [ ] Protection fault, on all instructions that should be privileged.
 - [ ] SYSCALL
 - [ ] VRET
 
 Multicore
 ---------
-- [ ] VMSTART
-- [ ] Shared memory
-- [ ] IPIs
+- [ ] Booting and resetting cores, test that a core can reset itself or other core, can't start already started core.
+- [ ] Inter-process interrupts, test that a core can trigger interrupt on another core.
+  
+Extensions
+----
+- [ ] Floating point arithmetic
+- [ ] Virtualization, VMSTART
 
 # Future TODOs
 - [ ] Disk device

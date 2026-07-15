@@ -2,11 +2,11 @@
 #include "tests/put.s"
 
 # Test framework
-
+align 8
 total_tests:
-    long
+    quad
 passed_tests:
-    long
+    quad
 coverage_vector_size:
     long #counter
 coverage_vector:

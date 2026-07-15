@@ -105,6 +105,9 @@ typedef enum {
 void emit_rdtick(Builder* builder, int reg0);
 void emit_rdtick1(Builder* builder, int reg0, int reg1);
 void emit_rdtick2(Builder* builder, int reg0, int reg1, int reg2, int reg3);
+void emit_advtimer(Builder* builder, int reg0);
+void emit_advtimer1(Builder* builder, int reg0, int reg1);
+void emit_advtimer2(Builder* builder, int reg0, int reg1, int reg2, int reg3);
 
 
 

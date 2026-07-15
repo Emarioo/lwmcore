@@ -245,6 +245,7 @@ unlock:
     pop r0
     ret
 
+align 8
 mutex_lock:
     quad
 global_counter:

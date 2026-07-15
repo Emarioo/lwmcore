@@ -145,6 +145,8 @@ The path specified in the include directive may be:
 
 **NOTE:** Current working directory is searched at the moment but this is likely to change in the future.
 
+There is also `#pragma once`. Works like C.
+
 ### Example:
 ```arm
 # util.asm
@@ -162,7 +164,22 @@ main:
     ret
 ```
 
-**NOTE:** We don't allow multiple assembly files to the assembler program because one initial assembly file keeps your project better organized. Specify 5-10 assembly files on the command line is annoying. Also no need for makefiles.
+**NOTE:** Each assembly file is turned into one binary blob (ROM) by the assembler, there is no linker. You must have one assembly file that includes all other assembly files you want in the ROM. The emulator and platform config only supports one ROM at the moment.
 
-# Future features
-- C like macros (at least without arguments)
+# Macros
+
+```arm
+#define PAGE_READ 0x1
+
+#define PUTMSG(X)
+    li r0, %X%
+    call putstring
+    li r0, '\n'
+    call putchar
+#endmacro
+
+hello:
+    byte[] "Hello\n\0"
+
+#PUTMSG(hello)
+```

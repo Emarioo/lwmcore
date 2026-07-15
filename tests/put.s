@@ -21,6 +21,7 @@ putchar:
     pop r1
     ret
 
+align 4
 log_index:
     long
 
