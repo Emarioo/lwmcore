@@ -15,7 +15,6 @@ const char* gpr_to_string(int reg, char regname[20]) {
 }
 const char* cr_to_string(int reg, char regname[20]) {
     static const char temp[256];
-    // @TODO Make function to convert regnum to string
     switch ((ControlRegister)reg) {
         #define CASE(CR) case LWM_REGNR_##CR: \
             sprintf(regname, #CR); return regname;

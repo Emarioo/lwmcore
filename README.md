@@ -105,9 +105,9 @@ tests/run.py
 - [x] Include directive in assembler.
 - [x] Platform config.
 - [x] Test some 32-bit and 64-bit mode.
+- [x] Make a test suite for various instructions and exception, paging semantics. All of the 16/32/64-bit CPUs should be tested.
 - [ ] Put MMIO address definitions in a file where programs can include them so i don't have to update them everywhere.
 - [ ] Operand checks in assembler. Using immediate where only register is allowed for example.
-- [ ] Make a test suite with some basic programs. Prime numbers, bubble sort, extensive instruction testing. Testing should be done for 16/32/64 don't forget that!
 - [ ] Resolve TODOs in code.
 - [ ] Finish CPU ISA. A revision for CPU encodings in the future is planned along with generating C code to encode/decode the opcodes from a scheme.
 - [ ] Finish assembler guide/spec?. preprocessor, labels, sections.
@@ -155,10 +155,17 @@ Paging
 
 User mode
 ---------
-- [ ] Protection fault, on all instructions that should be privileged.
-- [ ] Running code in user mode. Page fault with USER BIT set.
-- [ ] SYSCALL
-- [ ] VRET
+- [x] Protection fault, on all instructions that should be privileged.
+- [x] Running code in user mode. Page fault with USER BIT set.
+- [x] SYSCALL
+- [x] VRET
+
+### Future test cases
+
+Multicore and inter-process interrupts is platform specific. You use memory mapped IO to boot and send interrupts to other cores.
+The addresses and semantics may change so we make tests for these a little later.
+
+We haven't implement floating point or virtualization so we can't test extensions.
 
 Multicore
 ---------

@@ -36,7 +36,7 @@ LWM_FLAGS = "-q"
 
 def collect_tests():
     tests = []
-    for test_dir in glob.glob(f"{ROOT}/tests/instructions/*"):
+    for test_dir in glob.glob(f"{ROOT}/tests/isa/*"):
         if not os.path.basename(test_dir).startswith("_"):
             tests.append(test_dir)
     return tests

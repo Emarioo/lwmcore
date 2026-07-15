@@ -113,7 +113,7 @@ main:
     mtcr CRESP, r0
 
     lea r0, [user_code]
-    mtcr CREPC, user_code
+    mtcr CREPC, r0
 
     vret
 

@@ -35,9 +35,6 @@ main:
     ldhs r0, [value16]
     #TEST(-0x7dcc)
 
-    # @TODO Consider testing 0x8234 on 16-bit cpu when sign extending halfword load.
-    #    It should return correct result while on 32/64 it should be incorrect.
-
 
     #TEST_POST
     hlt

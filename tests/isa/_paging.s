@@ -1,7 +1,4 @@
-/*
-    @TODO Test USER denied page faults.
-       We probably do it for user tests (since user mode requires paging enabled)
-*/
+
 
     call setup_vector_base
 

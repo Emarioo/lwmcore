@@ -37,7 +37,7 @@ main:
     lea r0, [rootTable]
     mtcr CRPT, r0
 
-    #include "tests/instructions/_paging.s"
+    #include "tests/isa/_paging.s"
 
     #TEST_POST
     hlt

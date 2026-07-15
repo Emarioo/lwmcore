@@ -636,7 +636,7 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
 
                         char chr = get_char(context, head);
                         if (chr == ']') {
-                            // @TODO Empty addressing is not allowed.
+                            // @TODO Empty addressing is not allowed. Currently it becomes ABS16.
                             head++;
                             break;
                         }
@@ -875,7 +875,6 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
         object->alignment = queuedAlignment;
         queuedAlignment = 0;
         object->inst = inst;
-        // @TODO ERROR_SRC_RET(location_head, "Max instruction per block reached! (%d)\n", MAX_INST_PER_BLOCK);
         
         int lowestBytes = 0;
         int instBytes = largest_encoding_ext(inst.opcode, inst.operands[1].form, &lowestBytes);

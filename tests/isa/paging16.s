@@ -1,7 +1,5 @@
 /*
-    TEST_CONFIG = lwm64
-
-    @TODO Test for huge pages
+    TEST_CONFIG = lwm16
 */
 
 #include "tests/test_pre.s"
@@ -30,55 +28,35 @@ main:
         Preparations
     */
 
-    lea r0, [pageDirectory]
-    li r1, 0x1F
-    or r0, r0, r1
-    stl r0, [pageTable1]
-
-    lea r0, [pageTable1]
-    li r1, 0x1F
-    or r0, r0, r1
-    stl r0, [pageTable2]
-    
-    lea r0, [pageTable2]
-    li r1, 0x1F
-    or r0, r0, r1
-    stl r0, [rootTable]
-
     lea r0, [rootTable]
     mtcr CRPT, r0
 
-    
-    #include "tests/instructions/_paging.s"
-
+    #include "tests/isa/_paging.s"
 
     #TEST_POST
     hlt
 
-
-// r0 = 512-index into page table
+// r0 = 1024-index into page table
 // r1 = Flags
-// r2 = Physical Address bits 12:47 (low 12 bits should be aligned to page and are not needed)
+// r2 = Physical Address bits 12:21 (low 12 bits should be aligned to page and are not needed)
 map_page:
+    mov r3, r2
     li r4, 12
     shl r2, r2, r4
+    li r4, 4
+    shr r3, r3, r4
+
     or r2, r2, r1
 
-    li r4, 8
+    li r4, 4
     umul r0, r0, r4
-    stl r2, [pageDirectory + r0]
+    sth r2, [rootTable + r0]
+    sth r3, [rootTable + r0 + 2]
     ret
 
 
 #include "tests/test_post.s"
 
-
 section .page_tables 0x8000
 rootTable:
-    quad[512]
-pageTable2:
-    quad[512]
-pageTable1:
-    quad[512]
-pageDirectory:
-    quad[512]
+    long[1024]

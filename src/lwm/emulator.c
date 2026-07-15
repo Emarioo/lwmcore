@@ -18,7 +18,6 @@
 #define INTERRUPT_ENABLED() (core->crstatus & CRSTATUS_INTERRUPT)
 #define USER_ENABLED() (core->crstatus & CRSTATUS_USER)
 
-// @TODO Misaligned reads
 #define  READ8(address) read_exec_address8(core, address)
 #define READ16(address) read_exec_address16(core, address)
 #define READ32(address) read_exec_address32(core, address)
@@ -659,7 +658,6 @@ void emulator_dump_state(EmulatorContext* emulator) {
         }
 
         for (int i=0;i<reg_count;i++) {
-            // @TODO Make function to convert regnum to string
             cr_to_string(i, regname);
             printf(" %10s: %zd (0x%zx) ", regname, core->crs[i], core->crs[i]);
             if ((i+1) % stride == 0)
@@ -682,7 +680,7 @@ void emulator_trigger_exception(CoreState* core, int vector) {
         emulator_enter_vector(core, vector);
     }
     if (core->emulator->platformConfig->verbose) {
-        printf("EXCEPTION cpu=%d vector=%d\n", (int)core->crcpuid, vector);
+        printf("EXCEPTION cpu=%d vector=%d pc=0x%zx fault=0x%zx cause=0x%zx\n", (int)core->crcpuid, vector, core->pc, core->crfault, core->crcause);
     }
     longjmp(core->loop_jmpbuf, 1);
 }
@@ -953,9 +951,7 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
                 emulator_trigger_exception(core, VECTOR_ILLEGAL_INSTRUCTION);
             }
 
-            // @TODO If we load 8-bit integer we may want to sign extend it.
-            //   Does this instruction have flag to sign extend
-            //   or is it a separate instruction?
+            // Sign extension for LIS happens when decoding and returning uint64 immediate.
 
             core->gprs[regs[0]] = immediate;
 
@@ -1169,10 +1165,6 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
             bytes = decode_form_reg1(core, pc, NULL, regs);
             check_registers(core, regs, 1);
 
-            // @TODO Misaligned fault?
-
-            // printf("push/pop[%d]  %d 0x%x\n", opcode, regs[0], (int)pc);
-            
             if (opcode == OPCODE_PUSH) {
                 core->sp -= REGISTER_BYTESIZE();
                 switch (core->mode) {
@@ -1634,11 +1626,6 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
     }
 
     if (core->running) {
-        if (core->pc == next_pc) {
-            // @TODO Quit if this happens to often?
-            //   Maybe you did a spinloop? Maybe quit unless you called slow or wfi?
-            // printf("WARNING: Executing same instruction %zx?\n", next_pc);
-        }
         core->pc = next_pc;
     }
 
