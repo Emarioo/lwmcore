@@ -1,3 +1,5 @@
+*This is for old CPU. Used as inspiration for new designs.*
+
 Specification for Logic World 16-bit multicore processor.
 
 # Overview

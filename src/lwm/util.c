@@ -5,6 +5,7 @@
     #include "Windows.h"
 #else
     #include <sys/stat.h>
+    #include <time.h>
     #include <unistd.h>
 #endif
 
@@ -139,4 +140,34 @@ void sleep_us(uint64_t microseconds) {
     #else
         usleep(microseconds);
     #endif
+}
+
+uint64_t ticks_per_ms;
+
+static uint64_t calibrate_timestamp() {
+    struct timespec start_tp;
+    struct timespec end_tp;
+    uint64_t start;
+    uint64_t end;
+    
+    start = timestamp();
+    clock_gettime(CLOCK_MONOTONIC, &start_tp);
+    
+    sleep_us(10*1000); // 10ms
+    
+    end = timestamp();
+    clock_gettime(CLOCK_MONOTONIC, &end_tp);
+
+    uint64_t ns = (end_tp.tv_sec - start_tp.tv_sec) * 1000000000 + (end_tp.tv_nsec - start_tp.tv_nsec);
+    uint64_t tpms = ((end - start) * 1000000) / ns;
+    return tpms;
+}
+
+uint64_t timestamp_to_ns(uint64_t ts) {
+    // @TODO If ts is large then we get precision issues when multiplying 1000000.
+    //   If ts fits in 44 bits then we are okay. (2^20 ~= 1000000).
+    if (!ticks_per_ms) {
+        ticks_per_ms = calibrate_timestamp();
+    }
+    return (ts * 1000000) / ticks_per_ms;
 }

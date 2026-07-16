@@ -78,3 +78,12 @@ static inline uint32_t lzcnt(uint32_t value) {
     // #endif
 }
 
+
+static inline uint64_t timestamp() {
+    uint32_t eax;
+    uint32_t edx;
+    __asm__( "rdtsc" : "=a"(eax), "=d"(edx) );
+    return (uint64_t)eax | (uint64_t)edx << 32;
+}
+
+uint64_t timestamp_to_ns(uint64_t ts);

@@ -13,7 +13,9 @@ main:
 .loop:
     add r4, r4, r1
 
-    ; slow // Should not affect frequency or tick counter.
+    ; slow # The execution time of the program should still be realtime if
+           # we slow it down. For example if we run with and without slow we
+           # should get different execution time.
 
     li r5, 4000
     jeq r4, r5, .end 
@@ -33,6 +35,9 @@ main:
     umul r1, r1, r2
     udiv r0, r1, r3
 
+    // Print execution time.
+    // In an emulator it would be how long the emulation took in realtime, including host process scheduling.
+    // Not how long it took from the CPUs perspective disregarding emulator and process scheduling of the host.
     call putint
 
     li r0, ' ' call putchar
@@ -40,7 +45,6 @@ main:
     li r0, 's' call putchar
     li r0, '\n' call putchar
 
-    ldl r0, [#PLATFORM_CORE_TICK_FREQ]
     hlt
 
 #include "tests/put.s"

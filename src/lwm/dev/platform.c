@@ -12,10 +12,11 @@
 //########################
 
 
-#define PLATFORM_BASE            0xEFE0
-#define PLATFORM_CORE_CONTROL    PLATFORM_BASE+0x0
-#define PLATFORM_CORE_CPUID      PLATFORM_BASE+0x2
-#define PLATFORM_CORE_ENTRY      PLATFORM_BASE+0x8
+#define PLATFORM_BASE            0xEFC0
+#define PLATFORM_CORE_CONTROL    (PLATFORM_BASE+0x0)
+#define PLATFORM_CORE_CPUID      (PLATFORM_BASE+0x2)
+#define PLATFORM_CORE_ENTRY      (PLATFORM_BASE+0x8)
+#define PLATFORM_CORE_TICK_FREQ  (PLATFORM_BASE+0x10)
 
 #define PLATFORM_CORE_CONTROL_BOOT  0x1
 #define PLATFORM_CORE_CONTROL_RESET 0x2
@@ -55,7 +56,7 @@ bool platform_init(EmulatorContext* emulator, HardwareDevice* device) {
 
     device->state           = state;
     device->mmio_write      = platform_mmio_write;
-    // device->mmio_read       = platform_mmio_read;
+    device->mmio_read       = platform_mmio_read;
     // device->tick            = platform_tick;
     return true;
 }
@@ -100,6 +101,13 @@ bool platform_mmio_write(EmulatorContext* emulator, HardwareDevice* device, uint
 bool platform_mmio_read(EmulatorContext* emulator, HardwareDevice* device, uintptr_t address, size_t size, void* data) {
     Platform_State* state = device->state;
     // printf("IC MMIO 0x%zx %zd %c\n", address, size, *(char*)data);
+
+    if (size < 1 || size > 8)
+        return false;
     
+    if (address >= PLATFORM_CORE_TICK_FREQ && address <= PLATFORM_CORE_TICK_FREQ + 8 - size) {
+        memcpy(data, (char*)&emulator->cores->avgTickFrequency + address - PLATFORM_CORE_TICK_FREQ, size);
+        return true;
+    }
     return false;
 }

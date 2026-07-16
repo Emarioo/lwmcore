@@ -77,7 +77,7 @@ void mmu_check_flags(CoreState* core, MMUOperation operation, uintptr_t virt_add
 
     #define SET_CAUSE(ACCESS_FLAG) do { core->crfault = virt_address; core->crcause = ACCESS_FLAG; } while (0)
 
-    int mmuOpCause;
+    int mmuOpCause = 0;
     switch (operation) {
         case MMU_READ: {
             mmuOpCause = CRCAUSE_READ;
@@ -766,6 +766,7 @@ void emulator_reset_core(EmulatorContext* emulator, int cpuid) {
 
 // state is the seed
 uint32_t rand32(uint32_t* inout_state) {
+    // Where did i get this from?
     uint32_t state = *inout_state;
     *inout_state = state * 747796405u + 2891336453u;
     state = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
@@ -822,12 +823,13 @@ void emulator_start(PlatformConfig* config) {
     int currentCoreIndex = 0;
     int executedInstructions = 0;
     
-    emulator->randomState = 0xA19F0B25;
+    emulator->randomState = 0xA19F0B25; // Chosen at random, affects core scheduling. We use pseudo-randomness for deterministic random scheduling.
 
     #define INSTRUCTIONS_PER_CORE_TIME_SLICE 5
 
     int nextInstructionSlice = 5;
-
+    uint64_t startTime = timestamp();
+    uint64_t prevTime = timestamp();
     while (true) {
         CoreState* core = &emulator->cores[currentCoreIndex];
 
@@ -883,7 +885,7 @@ void emulator_start(PlatformConfig* config) {
                 }
             }
         }
-
+        
         int jmpResult = setjmp(core->loop_jmpbuf);
         if (jmpResult == 0) {
             emulator_step(emulator, currentCoreIndex);
@@ -891,10 +893,24 @@ void emulator_start(PlatformConfig* config) {
             // Exception/fault
             continue;
         }
+
+        uint64_t nowTime = timestamp();
+        uint64_t deltaTime_ns = timestamp_to_ns(nowTime - prevTime);
+        prevTime = nowTime;
+        core->executionTime_ns += deltaTime_ns;
+
+        uint64_t ticks_per_sec = (core->tickCounter * 1000000000) / core->executionTime_ns;
+        core->avgTickFrequency = ticks_per_sec;
     }
+
+    // @TODO We need to sum up instructions over all cores.
+    uint64_t endTime = timestamp();
+    uint64_t ns = timestamp_to_ns(endTime - startTime);
+    uint64_t steps = emulator->cores[0].instructionSteps;
+    uint64_t steps_per_sec = (steps * 1000000000) / ns;
     
     if (!config->quiet) {
-        printf("Stop emulator\n");
+        printf("Stop emulator (%zu us, %zu steps, %zu steps/sec)\n", ns / 1000, steps, steps_per_sec);
         emulator_dump_state(emulator);
     }
 }
@@ -908,6 +924,7 @@ void emulator_start(PlatformConfig* config) {
 void emulator_step(EmulatorContext* emulator, int cpuid) {
     CoreState* core = &emulator->cores[cpuid];
 
+    core->instructionSteps++;
 
     uint64_t pc = core->pc;
     uint8_t opcodeByte;
@@ -1093,7 +1110,7 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
                 right = (uint64_t)core->gprs[regs[2]];
                 leftSigned  = (int64_t)(uint64_t)core->gprs[regs[1]];
                 rightSigned = (int64_t)(uint64_t)core->gprs[regs[2]];
-            }
+            } else Assert(false);
 
             if (opcode == OPCODE_UDIV || opcode == OPCODE_UMOD) {
                 if (right == 0) {
@@ -1121,6 +1138,7 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
                 case OPCODE_XOR:  result = left ^ right; break;
                 case OPCODE_SHL:  result = left << right; break;
                 case OPCODE_SHR:  result = left >> right; break;
+                default: Assert(false);
             }
 
             core->gprs[regs[0]] = result;
@@ -1258,7 +1276,7 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
                 } else {
                     core->gprs[regs[0]] = tickCounter;
                 }
-            }
+            } else Assert(false);
 
             next_pc = pc + bytes;
 
@@ -1302,7 +1320,7 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
                 } else {
                     delta = core->gprs[regs[0]];
                 }
-            }
+            } else Assert(false);
             core->crtimercmp = core->tickCounter + delta;
 
             next_pc = pc + bytes;
@@ -1322,7 +1340,7 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
                 result = (uint32_t)core->gprs[regs[0]];
             } else if (core->mode == MODE_64) {
                 result = (uint64_t)core->gprs[regs[0]];
-            }
+            } else Assert(false);
 
             if ((result == 0) == (opcode == OPCODE_JZ) ) {
                 next_pc = pc + bytes + relative;
@@ -1358,7 +1376,7 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
                 right = (uint64_t)core->gprs[regs[1]];
                 leftSigned  = (int64_t)(uint64_t)core->gprs[regs[0]];
                 rightSigned = (int64_t)(uint64_t)core->gprs[regs[1]];
-            }
+            } else Assert(false);
 
             switch (cond) {
                 case COND_EQ: result = left == right; break;
@@ -1371,6 +1389,7 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
                 case COND_BE: result = left >= right; break;
                 case COND_A:  result = left > right; break;
                 case COND_AE: result = left >= right; break;
+                default: Assert(false);
             }
 
             if (result) {
@@ -1453,6 +1472,7 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
                 case ADDRESSING_REG1_PC_DISP32:
                     address = core->gprs[regs[memoryRegIndexBase]] + pc + bytes + displacement;
                 break;
+                default: Assert(false);
             }
 
             uint64_t value = core->gprs[regs[0]]; // Here for debugging. Only needed for stores.
@@ -1491,6 +1511,7 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
                         case MODE_64:
                             expected = (uint64_t)core->gprs[regs[0]];
                             break;
+                        default: Assert(false);
                     }
                     if (old == expected) {
                         uint64_t newValue = core->gprs[regs[1]];
@@ -1498,6 +1519,7 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
                     }
                     core->gprs[regs[1]] = old;  // rNew = old
                 } break;
+                default: Assert(false);
             }
 
             next_pc = pc + bytes;
@@ -1569,7 +1591,7 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
             //   We should yield the core instead for some time.
 
             LOG_INST("%s\n", opcode_to_string(opcode));
-            sleep_us(100000);
+            sleep_us(1000);
             
             next_pc = pc + 1;
         } break;
@@ -1853,6 +1875,4 @@ bool parse_platform_config(const char* path, PlatformConfig* config) {
 
     return true;
 }
-
-
 

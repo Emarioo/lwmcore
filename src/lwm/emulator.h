@@ -64,6 +64,9 @@ typedef struct {
     uint32_t pendingVectors[MAX_VECTORS/32];
 
     uint64_t tickCounter;
+    uint64_t avgTickFrequency;
+    uint64_t instructionSteps;
+    uint64_t executionTime_ns;
 
     bool running;
     jmp_buf loop_jmpbuf;

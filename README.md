@@ -92,6 +92,7 @@ tests/run.py
 
 # Should be finished before v1.0
 
+## Fundamentals
 - [x] Assembler only handles labels for call. Do same for jump and conditional jumps.
 - [x] Read tick and timer.
 - [x] Exception vector and illegal operations jumping to it.
@@ -106,21 +107,29 @@ tests/run.py
 - [x] Platform config.
 - [x] Test some 32-bit and 64-bit mode.
 - [x] Make a test suite for various instructions and exception, paging semantics. All of the 16/32/64-bit CPUs should be tested.
+  
+## Implementation
 - [ ] Put MMIO address definitions in a file where programs can include them so i don't have to update them everywhere.
 - [ ] Operand checks in assembler. Using immediate where only register is allowed for example.
 - [ ] Resolve TODOs in code.
-- [ ] Finish CPU ISA. A revision for CPU encodings in the future is planned along with generating C code to encode/decode the opcodes from a scheme.
+- [ ] Revision of instruction encodings. Explore automatic encoder/decoder C code generator using schemes.
+- [ ] Stabilize platform devices. Interrupt controller, platform device (multicore and IPI), UART, Emulator device.
+      Apart from the implementation a document explaining the device is needed. Also tests and assembly file with macros for
+      MMIO addresses and bit fields.
+- [ ] Performance metrics in the emulator. Currently only shows instructions per second at the end, maybe that's all we want?
+
+## Documentation
+- [ ] Finish CPU ISA markdown.
 - [ ] Finish assembler guide/spec?. preprocessor, labels, sections.
-- [ ] Finish emulator guide. Arguments. A little on HardwareDevice and how to emulate MMIO devices.
-- [ ] Finish quick guide to the emulator, assembler, and CPU.
+- [ ] Finish emulator guide. Arguments and platform config. How to make and emulate HardwareDevices through MMIO.
+- [ ] Finish a Getting Started Guide to the ecosystem: emulator, assembler, CPU instructions, devices.
 
 ## Test cases
 
 These tests are not thorough and do not cover edge cases. We add rudimentary tests where
 many instructions and semantics are tested to any degree, bare minimum for testing.
 
-Fundamentals
----
+### Basic instructions
 - [x] Arithmetic
 - [x] Memory addressing
 - [x] Memory load/store byte, short, long, quad, sign-extension
@@ -129,23 +138,19 @@ Fundamentals
 - [x] Atomic instructions, xadd, cas, includes some testing for multicore booting
 - [x] Save and restore instructions
 
-Exceptions
----------
+### Exceptions
 - [x] Illegal instruction
 - [x] Debug breakpoint
 - [x] Division by zero
 - [x] Misaligned Access (test various instructions including save/restore? atomics, normal load/store)
 - [ ] Double fault (not super important? we can test later? how do we test it?)
 
-Interrupts
----------
+### Interrupts
 - [x] Timer, includes rdtick instruction
 - [x] Enable/disable interrupts
 - [ ] External interrupts from some device. Timer interrupt is CPU internal and doesn't count. We cannot use keyboard interrupt because it requires user.
-  
 
-Paging
----------
+### Paging
 - [x] Page tables for 16/32/64-bit CPUs.
 - [x] Enable/disable paging (we test enabling, not disabling)
 - [x] Page fault on READ-only
@@ -153,95 +158,24 @@ Paging
 - [x] Page fault on EXECUTE
 - [x] Page fault on USER
 
-User mode
----------
+### User mode
 - [x] Protection fault, on all instructions that should be privileged.
 - [x] Running code in user mode. Page fault with USER BIT set.
 - [x] SYSCALL
 - [x] VRET
 
-### Future test cases
-
-Multicore and inter-process interrupts is platform specific. You use memory mapped IO to boot and send interrupts to other cores.
-The addresses and semantics may change so we make tests for these a little later.
-
-We haven't implement floating point or virtualization so we can't test extensions.
-
-Multicore
----------
-- [ ] Booting and resetting cores, test that a core can reset itself or other core, can't start already started core.
-- [ ] Inter-process interrupts, test that a core can trigger interrupt on another core.
-  
-Extensions
-----
-- [ ] Floating point arithmetic
-- [ ] Virtualization, VMSTART
-
-# Future TODOs
+# Work for the future
 - [ ] Disk device
-- [ ] Display device. (uart for keyboard input)
+- [ ] Display device. (uart can be used for keyboard input)
 - [ ] Implement decoder in logic world.
+- [ ] Floating point arithmetic
+- [ ] Just-In-Time transpiling from LWM to native x86_64. Appreciated when emulating compute heavy programs.
+- [ ] Virtualization, VMSTART
 
 # Documents
 
 See specifications in [docs](/docs). (all documents are work in progress)
-- [CPU](/docs/cpu.md) : Thorough details of the CPU's registers, special addresses, clock speed.
-- [Assembly](/docs/assembly.md) : Thorough guide of the assembly syntax.
-- [Guide](/docs/guide.md) : A complete guide to using the assembler, emulator, and realising the system in **Logic World**.
-
-
-# OLD README
-
-*This project used to produce ROM for running on a computer in Logic World but the CPU instructions has been remade and
-doesn't work on the Logic World computer anymore. The 16-bit version of the new CPU is meant to work in Logic World but
-the encoding is currently inefficient and it uses variable-length encoding so we'll see.*
-
-Assembler, emulator, and ROM writer for 16-bit Multicore computer in **Logic World**.
-
-To run in Logic World you need at least version `0.92` (currently preview beta version) where subassemblies where added.
-
-## Usage
-This project has two uses.
-1. Assembling and emulating a program based on this architecture [CPU](/docs/cpu.md).
-2. Reading a Logic World subassembly file and setting the state of the switches based on a binary file.
-
-The binary data can be provided through arguments `lwm mydata.bin --rom myrom.partialworld` or through the assembled program.
-
-Minimal example you can assemble, emulate, and run in Logic World.
-```bash
-# main.asm
-main:
-    li ra, 6
-    li rb, 2
-    add ra, rb
-    ret
-```
-These are some common commands.
-```bash
-# assemble and emulate
-lwm main.asm --emulate
-
-# assemble to binary
-lwm main.asm -o main.bin
-
-# assemble to logicworld subassembly
-lwm main.asm --rom test
-```
-
-The subassembly will automatically be placed in `C:/Program Files (x86)/Steam/steamapps/common/Logic World/subassemblies`. Prefix path with `./` or an absolute path to place subassembly in a different location than the default.
-
-You can use `lwm main.asm --rom main.partialworld` if you just want the file without the metadata. This file will not be placed in the `Logic World` subassemblies folder (it will be placed in the current working directory).
-
-## Building/Installing
-- Install GCC
-- Clone repo
-- Compile with `build.py` (should compile to `./lwm`)
-- Run with `lwm`
-
-You may want to set environment variables to the folder with `lwm.exe`.
-
-## Documents
-See specifications in [docs](/docs). (all documents are work in progress)
-- [CPU](/docs/cpu.md) : Thorough details of the CPU's registers, special addresses, clock speed.
-- [Assembly](/docs/assembly.md) : Thorough guide of the assembly syntax.
-- [Guide](/docs/guide.md) : A complete guide to using the assembler, emulator, and realising the system in **Logic World**.
+- [ISA](/docs/isa.md) : Details about the CPU's registers, instructions, exception and paging semantics.
+- [Assembly](/docs/assembly.md) : Guide for the assembler.
+- [Getting Started](/docs/guide.md) : A complete guide to start using the assembler and emulator.
+- [Realisation in Logic World](/docs/logic_world.md) : How the CPU is or can be realized in Logic World (may not be feasible with the new changes).

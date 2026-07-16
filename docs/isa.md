@@ -711,7 +711,7 @@ lea r0, [r1 + r2*scale + disp]
 |eint|Enable interrupts|
 |dint|Disable interrupts|
 |tlbflush|Flushes one page, not needed if process identifiers are used. Switching page table with 0 as process identifier flushes whole page table|
-|slow|Indicate spinlock to the CPU|
+|slow|Indicate spinlock to the CPU. This instruction should not affect CPU speed, tick counter, clock frequency in emulator.|
 |wfi|Wait for interrupt|
 
 

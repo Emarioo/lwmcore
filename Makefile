@@ -25,7 +25,7 @@ ROOT := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 
 CC := gcc
 
-CFLAGS := -g 
+CFLAGS := -g
 CFLAGS += -I$(ROOT)/include -I$(ROOT)/src
 CFLAGS += -Wall -Werror -fshort-wchar -Werror=implicit-function-declaration
 CFLAGS += -Wno-multichar
