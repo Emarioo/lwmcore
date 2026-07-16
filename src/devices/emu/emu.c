@@ -24,7 +24,7 @@
 //########################
 
 
-bool dev_create_emu(EmulatorContext* emulator, HardwareDevice* device);
+bool device_init(EmulatorContext* emulator, HardwareDevice* device);
 bool emu_mmio_write(EmulatorContext* emulator, HardwareDevice* device, uintptr_t address, size_t size, void* data);
 
 
@@ -38,7 +38,7 @@ typedef struct {
 } EMU_State;
 
 
-bool dev_create_emu(EmulatorContext* emulator, HardwareDevice* device) {
+bool device_init(EmulatorContext* emulator, HardwareDevice* device) {
     EMU_State* state = malloc(sizeof(EMU_State));
     memset(state, 0, sizeof(*state));
     device->mmio_write = emu_mmio_write;

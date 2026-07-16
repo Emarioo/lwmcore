@@ -1,7 +1,5 @@
 /*
     TEST_CONFIG = lwm64
-
-    @TODO Test for huge pages
 */
 
 #include "tests/test_pre.s"

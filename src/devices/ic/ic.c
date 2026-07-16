@@ -35,7 +35,7 @@
 //########################
 
 
-bool dev_create_ic(EmulatorContext* emulator, HardwareDevice* device);
+bool device_init(EmulatorContext* emulator, HardwareDevice* device);
 bool ic_mmio_write(EmulatorContext* emulator, HardwareDevice* device, uintptr_t address, size_t size, void* data);
 bool ic_mmio_read(EmulatorContext* emulator, HardwareDevice* device, uintptr_t address, size_t size, void* data);
 void ic_tick(EmulatorContext* emulator, HardwareDevice* device);
@@ -67,7 +67,7 @@ typedef struct {
 } IC_State;
 
 
-bool dev_create_ic(EmulatorContext* emulator, HardwareDevice* device) {
+bool device_init(EmulatorContext* emulator, HardwareDevice* device) {
     IC_State* state = malloc(sizeof(IC_State));
     memset(state, 0, sizeof(*state));
 

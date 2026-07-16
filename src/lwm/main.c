@@ -1,6 +1,6 @@
 
 #include "lwm/assembler.h"
-#include "lwm/emulator.h"
+#include "lwm/emulator_impl.h"
 #include "lwm/blotter.h"
 #include "lwm/scheme_gen.h"
 
@@ -9,11 +9,6 @@ const char* VERSION = "v0.0.1";
 const char* DATE = "2026-07-14";
 
 
-// @TODO Move these elsewhere!
-bool dev_create_emu(EmulatorContext* emulator, HardwareDevice* device);
-bool dev_create_ic(EmulatorContext* emulator, HardwareDevice* device);
-bool dev_create_uart(EmulatorContext* emulator, HardwareDevice* device);
-bool platform_init(EmulatorContext* emulator, HardwareDevice* device);
 
 void print_help() {
     printf("Usage: lwm sample.s -o sample.bin\n");
@@ -161,31 +156,23 @@ int main(int argc, const char** argv) {
     config.core_count = 2;
     config.core_mode = MODE_16;
     config.ram_size = 0x100000;
+    
+    const char* devicePaths[] = {
+        "bin/libemu.so",
+        "bin/libic.so",
+        "bin/libplatform.so",
+        "bin/libuart.so",
+        // "bin/libdisplay.so", // Don't load display by default because computer environment may
+                                // not have built it succesfully in case of missing raylib dependency.
+                                // On NixOS we do nix-shell and it okay on my laptop. Ubuntu is a different story.
+    };
+    config.devicePaths_len = ARRAY_LENGTH(devicePaths);
+    config.devicePaths = devicePaths;
 
     if (platform_config_file) {
         bool yes = parse_platform_config(platform_config_file, &config);
         if (!yes) {
             return 1;
-        }
-    }
-
-    if (config.devices_len == 0) {
-        // If config didn't specify devices then we use default ones.
-        FN_init deviceConstructors[] = {
-            dev_create_emu,
-            dev_create_ic,
-            dev_create_uart,
-            platform_init,
-        };
-        
-        config.devices_len = ARRAY_LENGTH(deviceConstructors);
-        config.devices = malloc(sizeof(HardwareDevice*) * config.devices_len);
-        memset(config.devices, 0, sizeof(HardwareDevice*) * config.devices_len);
-
-        for (int i=0;i<config.devices_len;i++) {
-            HardwareDevice* device = calloc(1, sizeof(HardwareDevice));
-            config.devices[i] = device;
-            device->init = deviceConstructors[i];
         }
     }
     

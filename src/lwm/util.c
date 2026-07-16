@@ -7,6 +7,7 @@
     #include <sys/stat.h>
     #include <time.h>
     #include <unistd.h>
+    #include <dlfcn.h>
 #endif
 
 bool equal(string text, const char* str) {
@@ -135,7 +136,7 @@ bool writeFile(const char* path, void* buffer, size_t size) {
 
 
 void sleep_us(uint64_t microseconds) {
-    #ifdef __WIN32__
+    #ifdef _WIN32
         Sleep(microseconds / 1000);
     #else
         usleep(microseconds);
@@ -170,4 +171,32 @@ uint64_t timestamp_to_ns(uint64_t ts) {
         ticks_per_ms = calibrate_timestamp();
     }
     return (ts * 1000000) / ticks_per_ms;
+}
+
+
+DynamicLibrary load_library(const char* path) {
+    #ifdef _WIN32
+        HMODULE module = LoadLibraryA(path);
+        return (DynamicLibrary)module;
+    #else
+        void* lib = dlopen(path, RTLD_LAZY);
+        return lib;
+    #endif
+}
+void unload_library(DynamicLibrary library) {
+    #ifdef _WIN32
+        FreeLibrary((HMODULE)library)
+    #else
+        dlclose(library);
+    #endif
+    
+}
+void* symbol_from_library(DynamicLibrary library, const char* name) {
+    #ifdef _WIN32
+        FARPROC proc = GetProcAddress((HMODULE)library, name);
+        return (void*)proc;
+
+    #else
+        return dlsym(library, name);
+    #endif
 }

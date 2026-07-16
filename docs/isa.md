@@ -55,11 +55,16 @@ Current process identifier could be a control register or in the low bits of the
 - Two-level page tables each with 1024 page entries.
 - Each entry is 32 bits. The indexing is as follows 10-10-12 (adds up to 32)
 
+If huge bit is set in an entry in root page table then that entry maps 4 MB page.
+
 ## 64-bit
 
 - 48-bit address space, 256 TiB.
 - Four-level page tables each with 512 page entries.
 - Each entry is 64 bits. The indexing is as follows 9-9-9-9-12 (adds up to 48)
+
+If huge bit is set in an entry in the third page table then that entry maps 2 MB page.
+If it is set for second page table then entry maps 1GB page.
 
 ## Enabling paging
 

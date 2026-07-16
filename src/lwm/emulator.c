@@ -1,7 +1,7 @@
 
 
 
-#include "lwm/emulator.h"
+#include "lwm/emulator_impl.h"
 #include "lwm/isa.h"
 
 #include "lwm/util.h"
@@ -145,7 +145,6 @@ void mmu_operation(CoreState* core, MMUOperation operation, uint64_t in_address,
         uint32_t index;
         uintptr_t pageDirectory = core->crpt;
         
-        uintptr_t offset = virt_address & 0xFFF;
         if (core->mode == MODE_16) {
             uint32_t entry;
             
@@ -155,7 +154,7 @@ void mmu_operation(CoreState* core, MMUOperation operation, uint64_t in_address,
             mmu_check_flags(core, operation, virt_address, flags);
             
             phys_address = entry & 0x3FF000; // 22-bit address space, lower 12 bits unused
-            phys_address += offset;
+            phys_address |= virt_address & 0xFFF;
             
         } else if (core->mode == MODE_32) {
             uint32_t entry;
@@ -168,13 +167,19 @@ void mmu_operation(CoreState* core, MMUOperation operation, uint64_t in_address,
             mmu_check_flags(core, operation, virt_address, flags);
             pageDirectory = entry & 0xFFFFF000;
             
-            index = (virt_address >> 12) & 0x3FF;
-            mmu_operation(core, MMU_READ, pageDirectory + index * 4, 4, &entry, true);
-            flags = entry & 0xFFF;
-            mmu_check_flags(core, operation, virt_address, flags);
+            if (flags & PAGE_BIT_HUGE) {
+                phys_address = entry & 0xFFC00000; // 32-bit address space, lower 12 bits unused
+                phys_address |= virt_address & 0x3FFFFF;
+            } else {
+                index = (virt_address >> 12) & 0x3FF;
+                mmu_operation(core, MMU_READ, pageDirectory + index * 4, 4, &entry, true);
+                flags = entry & 0xFFF;
+                mmu_check_flags(core, operation, virt_address, flags);
+                
+                phys_address = entry & 0xFFFFF000; // 32-bit address space, lower 12 bits unused
+                phys_address |= virt_address & 0xFFF;
+            }
             
-            phys_address = entry & 0xFFFFF000; // 32-bit address space, lower 12 bits unused
-            phys_address += offset;
 
         } else if (core->mode == MODE_64) {
             uint64_t entry;
@@ -205,7 +210,7 @@ void mmu_operation(CoreState* core, MMUOperation operation, uint64_t in_address,
             mmu_check_flags(core, operation, virt_address, flags);
             
             phys_address = entry & 0xFFFFFFFFF000; // 48-bit address space, lower 12 bits unused
-            phys_address += offset;
+            phys_address |= virt_address & 0xFFF;
 
         } else {
             Assert(false);
@@ -705,64 +710,6 @@ void emulator_enter_vector(CoreState* core, int vector) {
     core->crstatus &= ~(CRSTATUS_USER|CRSTATUS_INTERRUPT);
 }
 
-#define BITS_PER_PENDING_VECTOR_INDEX (8*sizeof(*core->pendingVectors))
-#define GET_PENDING_VECTOR(ARR, VECTOR) \
-    ((core->pendingVectors[VECTOR/BITS_PER_PENDING_VECTOR_INDEX] >> (VECTOR%BITS_PER_PENDING_VECTOR_INDEX)) & 1)
-#define ENABLE_PENDING_VECTOR(ARR, VECTOR) \
-    (core->pendingVectors[VECTOR/BITS_PER_PENDING_VECTOR_INDEX] |= (uint64_t)1 << (VECTOR%BITS_PER_PENDING_VECTOR_INDEX))
-#define DISABLE_PENDING_VECTOR(ARR, VECTOR) \
-    (core->pendingVectors[VECTOR/BITS_PER_PENDING_VECTOR_INDEX] &= ~((uint64_t)1 << (VECTOR%BITS_PER_PENDING_VECTOR_INDEX)))
-
-void emulator_raise_vector(EmulatorContext* emulator, int cpuid, int vector) {
-    if (cpuid < 0 || cpuid >= emulator->platformConfig->core_count) {
-        printf("WARNING: emulator_raise_vector, cpuid %d does not exist!\n", cpuid);
-        return;
-    }
-
-    if (vector < MAX_EXCEPTION_VECTORS || vector > MAX_VECTORS) {
-        printf("WARNING: emulator_raise_vector, low vectors 0-31 (%d) are not allowed! Function is intended for interrupts.\n", vector);
-        return;
-    }
-
-    if (emulator->platformConfig->verbose) {
-        printf("RAISE cpu=%d vector=%d\n", cpuid, vector);
-    }
-    CoreState* core = &emulator->cores[cpuid];
-    ENABLE_PENDING_VECTOR(core->pendingVectors, vector);
-}
-
-void emulator_request_interrupt(EmulatorContext* emulator, int irq_number) {
-    for (int i=0;i<emulator->platformConfig->devices_len;i++) {
-        HardwareDevice* device = emulator->platformConfig->devices[i];
-        if (device->queue_interrupt) {
-            device->queue_interrupt(emulator, device, irq_number);
-            break;
-        }
-    }
-}
-
-void emulator_boot_core(EmulatorContext* emulator, int cpuid, uintptr_t entry) {
-    if (cpuid < 0 || cpuid >= emulator->platformConfig->core_count)
-        return;
-
-    CoreState* core = &emulator->cores[cpuid];
-    if (core->running)
-        return;
-
-    core->pc = entry;
-    core->crstatus = 0;
-    core->crcpuid = cpuid;
-    core->crtimercmp = 0;
-    core->running = true;
-}
-
-void emulator_reset_core(EmulatorContext* emulator, int cpuid) {
-    if (cpuid < 0 || cpuid >= emulator->platformConfig->core_count)
-        return;
-
-    CoreState* core = &emulator->cores[cpuid];
-    core->running = false;
-}
 
 // state is the seed
 uint32_t rand32(uint32_t* inout_state) {
@@ -799,6 +746,49 @@ void emulator_start(PlatformConfig* config) {
     */
     memcpy(emulator->physicalMemory, config->rom, config->rom_len);
 
+
+    if (config->devicePaths_len != 0) {
+        int indexOfdevicePaths = config->devices_len;
+        if (config->devices) {
+            config->devices_len += config->devicePaths_len;
+            config->devices = realloc(config->devices, sizeof(*config->devices) * config->devices_len);
+            memset(config->devices + (config->devices_len-config->devicePaths_len), 0, sizeof(*config->devices) * config->devicePaths_len);
+        } else {
+            config->devices_len = config->devicePaths_len;
+            config->devices = malloc(sizeof(*config->devices) * config->devices_len);
+            memset(config->devices, 0, sizeof(*config->devices) * config->devices_len);
+        }
+
+        for (int i=0;i<config->devicePaths_len;i++) {
+            HardwareDevice* device = calloc(1, sizeof(HardwareDevice));
+            device->sharedLibraryPath = config->devicePaths[i];
+
+            config->devices[indexOfdevicePaths + i] = device;
+        }
+    }
+
+    for (int i=0;i<config->devices_len;i++) {
+        HardwareDevice* device = config->devices[i];
+
+        if (!device->sharedLibrary) {
+            device->sharedLibrary = load_library(device->sharedLibraryPath);
+            if (!device->sharedLibrary) {
+                fprintf(stderr, "\033[31mERROR:\033[0m Could not load '%s'\n", device->sharedLibraryPath);
+                exit(1);
+            }
+        }
+        if (!device->init) {
+            device->init = symbol_from_library(device->sharedLibrary, DEVICE_FUNC_INIT);
+            if (!device->init) {
+                fprintf(stderr, "\033[31mERROR:\033[0m Could not find '%s' in '%s'\n", DEVICE_FUNC_INIT, device->sharedLibraryPath);
+                exit(1);
+            }
+        }
+    }
+
+    // We initialize devices after we have found all shared libraries and functions.
+    // Otherwise display device may create a window which will be instantly shutdown
+    // if the library for the next device can't be found.
     for (int i=0;i<config->devices_len;i++) {
         HardwareDevice* device = config->devices[i];
         device->init(emulator, device);
@@ -863,13 +853,13 @@ void emulator_start(PlatformConfig* config) {
             }
         }
         if (core->tickCounter == core->crtimercmp) {
-            ENABLE_PENDING_VECTOR(core->pendingVectors, VECTOR_TIMER_INTERRUPT);
+            ENABLE_PENDING_VECTOR(core, VECTOR_TIMER_INTERRUPT);
         }
 
         bool canHandleInterrupt = (core->crstatus & CRSTATUS_INTERRUPT);
         if (canHandleInterrupt) {
             for (int vi=0;vi<MAX_VECTORS;vi++) {
-                int pending = GET_PENDING_VECTOR(core->pendingVectors, vi);
+                int pending = GET_PENDING_VECTOR(core, vi);
                 if (pending) {
                     if (vi == VECTOR_TIMER_INTERRUPT) {
                         if (config->verbose) {
@@ -881,7 +871,7 @@ void emulator_start(PlatformConfig* config) {
                         }
                     }
                     emulator_enter_vector(core, vi);
-                    DISABLE_PENDING_VECTOR(core->pendingVectors, vi);
+                    DISABLE_PENDING_VECTOR(core, vi);
                 }
             }
         }
@@ -1681,8 +1671,13 @@ void dump(PlatformConfig* config) {
         case MODE_64: printf(" 64-bit\n"); break;
         default:      printf(" %d\n", config->core_mode); break;
     }
-
+    
     int stride = 4;
+    
+    printf("Devices (%d):\n", config->devicePaths_len);
+    for (int i=0;i<config->devicePaths_len;i++) {
+        printf(" %s\n", config->devicePaths[i]);
+    }
     
     printf("ROM %d bytes (0x%x)\n", config->rom_len, config->rom_len);
 
@@ -1759,6 +1754,8 @@ bool parse_platform_config(const char* path, PlatformConfig* config) {
     config->core_count = 2;
     config->core_mode = MODE_16;
     config->core_entry = 0x0;
+    config->devicePaths_len = 0;
+    config->devicePaths = NULL;
     config->devices_len = 0;
     config->devices = NULL;
     config->rom_path = NULL;
@@ -1861,8 +1858,49 @@ bool parse_platform_config(const char* path, PlatformConfig* config) {
             ERROR_SRC_RET(head, "CPU features are not implemented.\n");
             
         } else if (equal(keyname, "devices")) {
+            
+            char chr = get_char(context, head);
+            if (chr != '[') {
+                ERROR_SRC_RET(head, "Expected '['.\n");
+            }
+            head++;
+            
+            while (true) {
+                parse_space(context, &head);
+                
+                char chr = get_char(context, head);
+                if (chr == ']') {
+                    head++;
+                    break;
+                }
+                
+                string path;
+                int parsedChars = parse_string(context, &head, &path);
+                if (!parsedChars) {
+                    ERROR_SRC_RET(head, "Expected a string path to shared library.\n");
+                }
+                
+                if (!config->devicePaths) {
+                    config->devicePaths_len += 1;
+                    config->devicePaths = malloc(sizeof(*config->devicePaths) * config->devicePaths_len);
+                } else {
+                    config->devicePaths_len += 1;
+                    config->devicePaths = realloc(config->devicePaths, sizeof(*config->devicePaths) * config->devicePaths_len);
+                }
+                config->devicePaths[config->devicePaths_len-1] = path.ptr;
 
-            ERROR_SRC_RET(head, "Devices are not implemented in config file. They must be hardcoded in the emulator.\n");
+                parse_space(context, &head);
+                
+                chr = get_char(context, head);
+                if (chr == ']') {
+                    continue;
+                } else if (chr == ',') {
+                    head++;
+                    continue;
+                } else {
+                    ERROR_SRC_RET(head, "Expected a ',' for more paths or ']' for end of list.\n");
+                }
+            }
             
         } else {
 

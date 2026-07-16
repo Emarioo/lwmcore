@@ -43,7 +43,7 @@
 //########################
 
 
-bool dev_create_uart(EmulatorContext* emulator, HardwareDevice* device);
+bool device_init(EmulatorContext* emulator, HardwareDevice* device);
 bool uart_mmio_write(EmulatorContext* emulator, HardwareDevice* device, uintptr_t address, size_t size, void* data);
 bool uart_mmio_read(EmulatorContext* emulator, HardwareDevice* device, uintptr_t address, size_t size, void* data);
 void uart_tick(EmulatorContext* emulator, HardwareDevice* device);
@@ -68,7 +68,7 @@ typedef struct {
 
 
 
-bool dev_create_uart(EmulatorContext* emulator, HardwareDevice* device) {
+bool device_init(EmulatorContext* emulator, HardwareDevice* device) {
     UART_State* state = malloc(sizeof(UART_State));
     memset(state, 0, sizeof(*state));
     device->mmio_write = uart_mmio_write;

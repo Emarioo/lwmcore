@@ -87,3 +87,10 @@ static inline uint64_t timestamp() {
 }
 
 uint64_t timestamp_to_ns(uint64_t ts);
+
+typedef void* DynamicLibrary;
+
+DynamicLibrary load_library(const char* path);
+void unload_library(DynamicLibrary library);
+void* symbol_from_library(DynamicLibrary library, const char* name);
+

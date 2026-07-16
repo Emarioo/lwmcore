@@ -26,7 +26,7 @@
 //########################
 
 
-bool platform_init(EmulatorContext* emulator, HardwareDevice* device);
+bool device_init(EmulatorContext* emulator, HardwareDevice* device);
 bool platform_mmio_write(EmulatorContext* emulator, HardwareDevice* device, uintptr_t address, size_t size, void* data);
 bool platform_mmio_read(EmulatorContext* emulator, HardwareDevice* device, uintptr_t address, size_t size, void* data);
 void platform_tick(EmulatorContext* emulator, HardwareDevice* device);
@@ -50,7 +50,7 @@ typedef struct {
 } Platform_State;
 
 
-bool platform_init(EmulatorContext* emulator, HardwareDevice* device) {
+bool device_init(EmulatorContext* emulator, HardwareDevice* device) {
     Platform_State* state = malloc(sizeof(*state));
     memset(state, 0, sizeof(*state));
 

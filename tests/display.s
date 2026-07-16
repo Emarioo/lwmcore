@@ -1,0 +1,6 @@
+
+#define DISPLAY_BASE          0xD0000
+#define DISPLAY_WIDTH         0xD0000
+#define DISPLAY_HEIGHT        0xD0004
+#define DISPLAY_STRIDE        0xD0008
+#define DISPLAY_FRAMEBUFFER   0xD0040

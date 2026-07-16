@@ -1,5 +1,3 @@
-
-
 #pragma once
 
 #include <stdint.h>
@@ -74,7 +72,19 @@ typedef struct {
     EmulatorContext* emulator;
 } CoreState;
 
+
+#define BITS_PER_PENDING_VECTOR_INDEX(CORE) (8*sizeof(*(CORE)->pendingVectors))
+#define GET_PENDING_VECTOR(CORE, VECTOR) \
+    (((CORE)->pendingVectors[VECTOR/BITS_PER_PENDING_VECTOR_INDEX(CORE)] >> (VECTOR%BITS_PER_PENDING_VECTOR_INDEX(CORE))) & 1)
+#define ENABLE_PENDING_VECTOR(CORE, VECTOR) \
+    ((CORE)->pendingVectors[VECTOR/BITS_PER_PENDING_VECTOR_INDEX(CORE)] |= (uint64_t)1 << (VECTOR%BITS_PER_PENDING_VECTOR_INDEX(CORE)))
+#define DISABLE_PENDING_VECTOR(CORE, VECTOR) \
+    ((CORE)->pendingVectors[VECTOR/BITS_PER_PENDING_VECTOR_INDEX(CORE)] &= ~((uint64_t)1 << (VECTOR%BITS_PER_PENDING_VECTOR_INDEX(CORE))))
+
+
 typedef struct HardwareDevice HardwareDevice;
+
+#define DEVICE_FUNC_INIT  "device_init"
 
 typedef bool(*FN_mmio_read)      (EmulatorContext* emulator, HardwareDevice* device, uintptr_t address, size_t size, void* data);
 typedef bool(*FN_mmio_write)     (EmulatorContext* emulator, HardwareDevice* device, uintptr_t address, size_t size, void* data);
@@ -84,9 +94,13 @@ typedef void(*FN_queue_interrupt)(EmulatorContext* emulator, HardwareDevice* dev
 
 struct HardwareDevice {
     const char*        sharedLibraryPath;
+    void*              sharedLibrary;
     void*              state;
     void*              user_data;
     FN_init            init;
+    // @TODO deinit so we can join threads that were created.
+    //    Needed for display device which creates a raylib thread which
+    //    segfaults at the end because we don't clean it up (I assume that's why we segfault)
     FN_tick            tick;
     FN_mmio_read       mmio_read;
     FN_mmio_write      mmio_write;
@@ -102,6 +116,9 @@ typedef struct {
     uint64_t ram_size;
     int      core_count;
     CoreMode core_mode;
+
+    int              devicePaths_len;
+    const char**     devicePaths;
 
     int              devices_len;
     HardwareDevice** devices;
@@ -127,9 +144,3 @@ void emulator_raise_vector(EmulatorContext* emulator, int cpuid, int vector);
 
 void emulator_boot_core(EmulatorContext* emulator, int cpuid, uintptr_t entry);
 void emulator_reset_core(EmulatorContext* emulator, int cpuid);
-
-void emulator_start(PlatformConfig* config);
-
-bool parse_platform_config(const char* path, PlatformConfig* config);
-
-void dump(PlatformConfig* config);
