@@ -9,6 +9,8 @@
 #include <raylib.h>
 #include <rlgl.h>
 
+#include "lwm/util.h"
+
 
 //########################
 //    Memory Mapped IO
@@ -28,12 +30,9 @@
 //########################
 
 
-bool device_init(EmulatorContext* emulator, HardwareDevice* device);
-bool display_mmio_write(EmulatorContext* emulator, HardwareDevice* device, uintptr_t address, size_t size, void* data);
-bool display_mmio_read(EmulatorContext* emulator, HardwareDevice* device, uintptr_t address, size_t size, void* data);
-void display_tick(EmulatorContext* emulator, HardwareDevice* device);
+bool device_write(HardwareDevice* device, uintptr_t address, size_t size, void* data);
+bool device_read(HardwareDevice* device, uintptr_t address, size_t size, void* data);
 
-// internal
 void* display_thread(void* arg);
 
 
@@ -57,32 +56,61 @@ typedef struct {
     uint32_t    frameBufferSize;
 } Display_State;
 
+volatile bool hasRendered = false;
+volatile bool doShutdown = false;
 
-bool device_init(EmulatorContext* emulator, HardwareDevice* device) {
-    Display_State* state = malloc(sizeof(*state));
-    memset(state, 0, sizeof(*state));
+bool device_event(HardwareDevice* device, HardwareEvent eventType, uintptr_t arg0, uintptr_t arg1, uintptr_t arg2, uintptr_t arg3) {
+    EmulatorContext* emulator = device->emulator;
+    Display_State*   state    = device->state;
 
-    device->state           = state;
-    device->mmio_write      = display_mmio_write;
-    device->mmio_read       = display_mmio_read;
+    switch (eventType) {
+        case EVENT_INIT: {
+            state = malloc(sizeof(*state));
+            memset(state, 0, sizeof(*state));
 
-    state->ram.width = 320;
-    state->ram.height = 240;
-    state->ram.stride = state->ram.width * 4;
-    state->frameBufferSize = state->ram.height * state->ram.stride;
-    state->frameBuffer = malloc(state->frameBufferSize);
-    memset(state->frameBuffer, 0xFF, state->frameBufferSize);
+            device->state     = state;
+            device->eventMask = 0;
+            device->mmio_read = device_read;
+            device->mmio_write = device_write;
 
-    int res = pthread_create(&state->thread, NULL, display_thread, state);
-    if (res != 0) {
-        printf("\033[31mERROR:\033[0m Could not create display thread\n");
+            state->ram.width  = 640;
+            state->ram.height = 480;
+            state->ram.stride = state->ram.width * 4;
+            state->frameBufferSize = state->ram.height * state->ram.stride;
+            state->frameBuffer = malloc(state->frameBufferSize);
+            memset(state->frameBuffer, 0xFF, state->frameBufferSize);
+
+            declare_mmio(device, DISPLAY_BASE, 0x40);
+            declare_mmio(device, DISPLAY_FRAMEBUFFER, state->frameBufferSize);
+
+            hasRendered = false;
+            doShutdown = false;
+
+            int res = pthread_create(&state->thread, NULL, display_thread, state);
+            if (res != 0) {
+                printf("\033[31mERROR:\033[0m Could not create display thread\n");
+            }
+
+            // Give display thread some time to render stuff.
+            // Otherwise emulator may render something and shutdown
+            // before display thread has done anything.
+            while (!hasRendered) {
+                sleep_us(1000);
+            }
+
+            return true;
+        } break;
+        case EVENT_DEINIT: {
+            doShutdown = true;
+            pthread_join(state->thread, NULL);
+            return true;
+        } break;
+        default:
     }
-
-    return true;
+    return false;
 }
 
-
-bool display_mmio_write(EmulatorContext* emulator, HardwareDevice* device, uintptr_t address, size_t size, void* data) {
+bool device_write(HardwareDevice* device, uintptr_t address, size_t size, void* data) {
     Display_State* state = device->state;
     // printf("PLATFORM MMIO 0x%zx %zd %c\n", address, size, *(char*)data);
     
@@ -99,7 +127,7 @@ bool display_mmio_write(EmulatorContext* emulator, HardwareDevice* device, uintp
 }
 
 
-bool display_mmio_read(EmulatorContext* emulator, HardwareDevice* device, uintptr_t address, size_t size, void* data) {
+bool device_read(HardwareDevice* device, uintptr_t address, size_t size, void* data) {
     Display_State* state = device->state;
     // printf("IC MMIO 0x%zx %zd %c\n", address, size, *(char*)data);
 
@@ -123,7 +151,7 @@ void* display_thread(void* arg) {
 
     SetTraceLogLevel(LOG_NONE);
     InitWindow(state->ram.width, state->ram.height, "LWM Display Device");
-
+    
     SetTargetFPS(60);
 
     Image img = {
@@ -136,18 +164,21 @@ void* display_thread(void* arg) {
 
     state->texture = LoadTextureFromImage(img);
     
-    while (!WindowShouldClose()) {
+    while (!WindowShouldClose() && !doShutdown) {
         BeginDrawing();
 
         rlDisableColorBlend();
         
         UpdateTexture(state->texture, state->frameBuffer);
+        // @TODO Upscaled frame buffer.
         DrawTexture(state->texture, 0, 0, WHITE);
         
         EndDrawing();
+        hasRendered = true;
     }
+    UnloadTexture(state->texture);
 
-    printf("Display Thread Terminated by user.\n");
-
+    CloseWindow();
+    
     return NULL;
 }

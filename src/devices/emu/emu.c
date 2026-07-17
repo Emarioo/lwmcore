@@ -12,11 +12,12 @@
 //########################
 
 
-#define EMU_LOG_BEG  0xF008
-#define EMU_LOG_END  0xFFFC
 
-#define EMU_HALT     0xF000
-#define EMU_OUT      0xF004
+#define EMU_BASE     0xF000
+#define EMU_HALT     (EMU_BASE+0x0)
+#define EMU_OUT      (EMU_BASE+0x4)
+#define EMU_LOG_BEG  (EMU_BASE+0x8)
+#define EMU_LOG_END  (EMU_BASE+0xFFC)
 
 
 //########################
@@ -24,8 +25,7 @@
 //########################
 
 
-bool device_init(EmulatorContext* emulator, HardwareDevice* device);
-bool emu_mmio_write(EmulatorContext* emulator, HardwareDevice* device, uintptr_t address, size_t size, void* data);
+bool device_write(HardwareDevice* device, uintptr_t address, size_t size, void* data);
 
 
 //########################
@@ -37,21 +37,30 @@ typedef struct {
     FILE* log_file;
 } EMU_State;
 
+bool device_event(HardwareDevice* device, HardwareEvent eventType, uintptr_t arg0, uintptr_t arg1, uintptr_t arg2, uintptr_t arg3) {
+    EmulatorContext* emulator = device->emulator;
+    EMU_State*       state    = device->state;
 
-bool device_init(EmulatorContext* emulator, HardwareDevice* device) {
-    EMU_State* state = malloc(sizeof(EMU_State));
-    memset(state, 0, sizeof(*state));
-    device->mmio_write = emu_mmio_write;
-    device->state      = state;
-    return true;
+    switch (eventType) {
+        case EVENT_INIT: {
+            state = malloc(sizeof(EMU_State));
+            memset(state, 0, sizeof(*state));
+            device->state     = state;
+            device->eventMask = 0;
+            device->mmio_write = device_write;
+
+            declare_mmio(device, EMU_BASE, 4096);
+
+            return true;
+        } break;
+        default:
+    }
+    return false;
 }
 
-
-
-bool emu_mmio_write(EmulatorContext* emulator, HardwareDevice* device, uintptr_t address, size_t size, void* data) {
+bool device_write(HardwareDevice* device, uintptr_t address, size_t size, void* data) {
+    EmulatorContext* emulator = device->emulator;
     EMU_State* state = device->state;
-
-    // printf("MMIO 0x%zx\n", address);
 
     if (address == EMU_HALT) {
         // Memory mapped IO for halting the emulator.

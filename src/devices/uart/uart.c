@@ -41,13 +41,9 @@
 //########################
 //    Device Functions
 //########################
-
-
-bool device_init(EmulatorContext* emulator, HardwareDevice* device);
-bool uart_mmio_write(EmulatorContext* emulator, HardwareDevice* device, uintptr_t address, size_t size, void* data);
-bool uart_mmio_read(EmulatorContext* emulator, HardwareDevice* device, uintptr_t address, size_t size, void* data);
-void uart_tick(EmulatorContext* emulator, HardwareDevice* device);
-
+bool device_write(HardwareDevice* device, uintptr_t address, size_t size, void* data);
+bool device_read(HardwareDevice* device, uintptr_t address, size_t size, void* data);
+bool device_tick(HardwareDevice* device);
 
 //########################
 //    Implementation
@@ -67,76 +63,43 @@ typedef struct {
 } UART_State;
 
 
+bool device_event(HardwareDevice* device, HardwareEvent eventType, uintptr_t arg0, uintptr_t arg1, uintptr_t arg2, uintptr_t arg3) {
+    EmulatorContext* emulator = device->emulator;
+    UART_State*      state    = device->state;
 
-bool device_init(EmulatorContext* emulator, HardwareDevice* device) {
-    UART_State* state = malloc(sizeof(UART_State));
-    memset(state, 0, sizeof(*state));
-    device->mmio_write = uart_mmio_write;
-    device->mmio_read  = uart_mmio_read;
-    device->tick       = uart_tick;
-    device->state      = state;
+    switch (eventType) {
+        case EVENT_INIT: {
+            state = malloc(sizeof(*state));
+            memset(state, 0, sizeof(*state));
+            device->state     = state;
+            device->eventMask = 0;
+            device->mmio_read = device_read;
+            device->mmio_write = device_write;
+            device->tick = device_tick;
 
-    state->uart_ram.status = UART_TX_READY_MASK;
+            declare_mmio(device, UART_BASE, 0x20);
 
-    // Turn off line buffering, must be restored when program exits
-    // struct termios t;
-    // tcgetattr(0, &t);
-    // t.c_lflag &= ~(ICANON | ECHO);
-    // t.c_cc[VMIN] = 0;
-    // t.c_cc[VTIME] = 0;
-    // tcsetattr(0, TCSANOW, &t);
+            state->uart_ram.status = UART_TX_READY_MASK;
 
-    return true;
-}
+            // Turn off line buffering, must be restored when program exits
+            // struct termios t;
+            // tcgetattr(0, &t);
+            // t.c_lflag &= ~(ICANON | ECHO);
+            // t.c_cc[VMIN] = 0;
+            // t.c_cc[VTIME] = 0;
+            // tcsetattr(0, TCSANOW, &t);
 
-void uart_tick(EmulatorContext* emulator, HardwareDevice* device) {
-    UART_State* state = device->state;
-
-    struct pollfd pfd;
-    pfd.fd = 0; // stdin
-    pfd.events = POLLIN;
-    int res = poll(&pfd, 1, 0); // 0 = non-blocking
-    if (res > 0) {
-        // @TODO Put char in a buffer so we stop sending IRQs.
-        //   Potentially set a flag to disable requests until 
-        //   RX is read from
-        state->uart_ram.status |= UART_RX_READY_MASK;
-        if (state->uart_ram.control & UART_RX_INTERRUPT_ENABLE_MASK) {
-            if (!state->sentIRQ) {
-                state->sentIRQ = true;
-                emulator_request_interrupt(emulator, UART_IRQ_NUMBER);
-            }
-        }
+            return true;
+        } break;
+        default:
     }
-}
-
-bool uart_mmio_write(EmulatorContext* emulator, HardwareDevice* device, uintptr_t address, size_t size, void* data) {
-    UART_State* state = device->state;
-    // printf("MMIO 0x%zx %zd %c\n", address, size, *(char*)data);
-    
-    if (size < 1 || size > 4)
-        return false;
-
-    if (address == UART_CONTROL) {
-        memcpy(&state->uart_ram.control, data, size);
-        // @TODO Check if we enabled interrupts
-        return true;
-    }
-    
-    if (size == 1 && address == UART_DATA) {
-        fwrite(data, 1, size, stdout);
-        fflush(stdout);
-        state->uart_ram.status = UART_TX_READY_MASK;
-        return true;
-    }
-
     return false;
 }
 
-bool uart_mmio_read(EmulatorContext* emulator, HardwareDevice* device, uintptr_t address, size_t size, void* data) {
-    UART_State* state = device->state;
-    // printf("UART MMIO 0x%zx %zd %c\n", address, size, *(char*)data);
-    
+
+bool device_read(HardwareDevice* device, uintptr_t address, size_t size, void* data) {
+    UART_State*      state    = device->state;
+
     if (size < 1 || size > 4)
         return false;
 
@@ -175,4 +138,49 @@ bool uart_mmio_read(EmulatorContext* emulator, HardwareDevice* device, uintptr_t
     }
 
     return false;
+}
+
+bool device_write(HardwareDevice* device, uintptr_t address, size_t size, void* data) {
+    UART_State*      state    = device->state;
+    if (size < 1 || size > 4)
+        return false;
+
+    if (address == UART_CONTROL) {
+        memcpy(&state->uart_ram.control, data, size);
+        // @TODO Check if we enabled interrupts
+        return true;
+    }
+    
+    if (size == 1 && address == UART_DATA) {
+        fwrite(data, 1, size, stdout);
+        fflush(stdout);
+        state->uart_ram.status = UART_TX_READY_MASK;
+        return true;
+    }
+    
+    return false;
+}
+
+bool device_tick(HardwareDevice* device) {
+    UART_State*      state    = device->state;
+    EmulatorContext* emulator = device->emulator;
+    
+    struct pollfd pfd;
+    pfd.fd = 0; // stdin
+    pfd.events = POLLIN;
+    int res = poll(&pfd, 1, 0); // 0 = non-blocking
+    if (res > 0) {
+        // @TODO Put char in a buffer so we stop sending IRQs.
+        //   Potentially set a flag to disable requests until 
+        //   RX is read from
+        state->uart_ram.status |= UART_RX_READY_MASK;
+        if (state->uart_ram.control & UART_RX_INTERRUPT_ENABLE_MASK) {
+            if (!state->sentIRQ) {
+                state->sentIRQ = true;
+                emulator_request_interrupt(emulator, UART_IRQ_NUMBER);
+            }
+        }
+    }
+
+    return true;
 }

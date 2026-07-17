@@ -34,12 +34,8 @@
 //    Device Functions
 //########################
 
-
-bool device_init(EmulatorContext* emulator, HardwareDevice* device);
-bool ic_mmio_write(EmulatorContext* emulator, HardwareDevice* device, uintptr_t address, size_t size, void* data);
-bool ic_mmio_read(EmulatorContext* emulator, HardwareDevice* device, uintptr_t address, size_t size, void* data);
-void ic_tick(EmulatorContext* emulator, HardwareDevice* device);
-void ic_queue_interrupt(EmulatorContext* emulator, HardwareDevice* device, int irq_number);
+bool device_write(HardwareDevice* device, uintptr_t address, size_t size, void* data);
+bool device_read(HardwareDevice* device, uintptr_t address, size_t size, void* data);
 
 //########################
 //    Implementation
@@ -67,43 +63,60 @@ typedef struct {
 } IC_State;
 
 
-bool device_init(EmulatorContext* emulator, HardwareDevice* device) {
-    IC_State* state = malloc(sizeof(IC_State));
-    memset(state, 0, sizeof(*state));
+bool device_event(HardwareDevice* device, HardwareEvent eventType, uintptr_t arg0, uintptr_t arg1, uintptr_t arg2, uintptr_t arg3) {
+    EmulatorContext* emulator = device->emulator;
+    IC_State*        state    = device->state;
 
-    device->state           = state;
-    device->mmio_write      = ic_mmio_write;
-    device->mmio_read       = ic_mmio_read;
-    device->tick            = ic_tick;
-    device->queue_interrupt = ic_queue_interrupt;
-    return true;
+    switch (eventType) {
+        case EVENT_INIT: {
+            state = malloc(sizeof(*state));
+            memset(state, 0, sizeof(*state));
+            device->state     = state;
+            device->eventMask = EVENT_INTERRUPT;
+            device->mmio_read = device_read;
+            device->mmio_write = device_write;
+
+            declare_mmio(device, IC_BASE, 0x10);
+            declare_mmio(device, IC_IRQ_BASE, IC_MAX_IRQS * IC_IRQ_STRIDE);
+
+            return true;
+        } break;
+        case EVENT_INTERRUPT: {
+            int irq_number = arg0;
+
+            if (irq_number < 0 || irq_number >= IC_MAX_IRQS) {
+                return false;
+            }
+
+            IRQEntry* entry = &state->ic_ram.entries[irq_number];
+            if ((entry->flags & IC_FLAGS_ENABLE_MASK) == 0) {
+                return false;
+            }
+
+            emulator_raise_vector(emulator, entry->cpuid, entry->vector);
+            return true;
+        } break;
+        default:
+    }
+    return false;
 }
 
-void ic_queue_interrupt(EmulatorContext* emulator, HardwareDevice* device, int irq_number) {
+bool device_read(HardwareDevice* device, uintptr_t address, size_t size, void* data) {
     IC_State* state = device->state;
-    // printf("IRQ %d\n", irq_number);
 
-    if (irq_number < 0 || irq_number >= IC_MAX_IRQS) {
-        return;
+    if (size < 1 || size > 4)
+        return false;
+
+    if (address >= IC_BASE && address <= IC_BASE + sizeof(IC_RAM) - size) {
+        memcpy(data, (char*)&state->ic_ram + address - IC_BASE, size);
+        return true;
     }
 
-    IRQEntry* entry = &state->ic_ram.entries[irq_number];
-    if ((entry->flags & IC_FLAGS_ENABLE_MASK) == 0) {
-        return;
-    }
-
-    emulator_raise_vector(emulator, entry->cpuid, entry->vector);
+    return false;
 }
-
-void ic_tick(EmulatorContext* emulator, HardwareDevice* device) {
+bool device_write(HardwareDevice* device, uintptr_t address, size_t size, void* data) {
+    EmulatorContext* emulator = device->emulator;
     IC_State* state = device->state;
-    
-}
-
-bool ic_mmio_write(EmulatorContext* emulator, HardwareDevice* device, uintptr_t address, size_t size, void* data) {
-    IC_State* state = device->state;
-    // printf("IC MMIO 0x%zx %zd %c\n", address, size, *(char*)data);
-    
     if (size < 1 || size > 4)
         return false;
     
@@ -116,22 +129,6 @@ bool ic_mmio_write(EmulatorContext* emulator, HardwareDevice* device, uintptr_t 
             }
         }
 
-        return true;
-    }
-
-    return false;
-}
-
-
-bool ic_mmio_read(EmulatorContext* emulator, HardwareDevice* device, uintptr_t address, size_t size, void* data) {
-    IC_State* state = device->state;
-    // printf("IC MMIO 0x%zx %zd %c\n", address, size, *(char*)data);
-    
-    if (size < 1 || size > 4)
-        return false;
-
-    if (address >= IC_BASE && address <= IC_BASE + sizeof(IC_RAM) - size) {
-        memcpy(data, (char*)&state->ic_ram + address - IC_BASE, size);
         return true;
     }
 

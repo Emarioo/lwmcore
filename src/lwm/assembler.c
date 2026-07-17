@@ -78,6 +78,16 @@ int get_regnr(string name);
 //     currentSection->labels_len++;
 // }
 
+Section* find_section(AssemblerContext* context, const char* name) {
+    for (int si=0;si<context->sections_len;si++) {
+        Section* section = &context->sections[si];
+        if (equal(section->name, name)) {
+            return section;
+        }
+    }
+    return NULL;
+}
+
 bool find_label(AssemblerContext* context, const char* name, Section** out_section, Label** out_label) {
     for (int si=0;si<context->sections_len;si++) {
         Section* section = &context->sections[si];
@@ -200,6 +210,8 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
         section->addr = 0;
         section->location = loc;
         context->sections_len++;
+        #define DEFAULT_SECTION_NAME "_default_"
+        section->name = (string){ .ptr = DEFAULT_SECTION_NAME, .len = strlen(DEFAULT_SECTION_NAME) };
 
         section->labels_len = 0;
         section->labels_max = MAX_LABELS;
@@ -469,40 +481,60 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
             parse_space(context, &head);
 
             string sectionName;
-            parse_non_space(context, &head, &sectionName);
+            char chr = get_char(context, head);
+            if (chr == '"') {
+                parsed_chars = parse_string(context, &head, &sectionName);
+                if (!parsed_chars) {
+                    ERROR_SRC_RET(head, "Could not parse section name.\n");
+                }
+            } else if (chr == '\'') {
+                ERROR_SRC_RET(head, "Section name cannot be specified with single quote.\n");
+            } else {
+                parsed_chars = parse_non_space(context, &head, &sectionName);
+                if (!parsed_chars) {
+                    ERROR_SRC_RET(head, "Could not parse section name, '%c'.\n", chr);
+                }
+            }
 
             parse_space(context, &head);
 
-            context->sections[context->sections_len-1].size = estimated_addressHigh;
-
-            // Create new block and set its address
-            Assert(context->sections_len+1 <= context->sections_max);
-            SourceLocation loc = count_lines(context, head);
-            Section* section = &context->sections[context->sections_len];
-            section->location = loc;
-            context->sections_len++;
             
             uint64_t addr;
             int parsed_chars = parse_int(context, &head, &addr);
             if(parsed_chars) {
+                context->sections[context->sections_len-1].estimatedAddress_low = estimated_addressLow;
+                context->sections[context->sections_len-1].estimatedAddress_high = estimated_addressHigh;
+
+                // Create new block and set its address
+                Assert(context->sections_len+1 <= context->sections_max);
+                SourceLocation loc = count_lines(context, head);
+                Section* section = &context->sections[context->sections_len];
+                section->location = loc;
+                context->sections_len++;
+                
                 section->addr = addr;
+                section->name = sectionName;
+                section->labels_len = 0;
+                section->labels_max = MAX_LABELS;
+                section->objects_len = 0;
+                section->objects_max = MAX_OBJECTS;
+                section->labels = malloc(sizeof(Label) * section->labels_max);
+                section->objects = malloc(sizeof(Object) * section->objects_max);
+                memset(section->labels, 0, sizeof(Label) * section->labels_max);
+                memset(section->objects, 0, sizeof(Object) * section->objects_max);
+
+                estimated_addressLow = 0;
+                estimated_addressHigh = 0;
             } else {
-                ERROR_SRC_RET(head, "Expected an integer, not '%c'\n", get_char(context, head));
+                Section* section = find_section(context, sectionName.ptr);
+                if (!section) {
+                    ERROR_SRC_RET(head, "Section '%s' does not exist. Define section with 'section \".text\" 0x0'.\n", sectionName.ptr);
+                }
+
+                estimated_addressLow = section->estimatedAddress_low;
+                estimated_addressHigh = section->estimatedAddress_high;
             }
-
-            section->name = sectionName;
-            section->labels_len = 0;
-            section->labels_max = MAX_LABELS;
-            section->objects_len = 0;
-            section->objects_max = MAX_OBJECTS;
-            section->labels = malloc(sizeof(Label) * section->labels_max);
-            section->objects = malloc(sizeof(Object) * section->objects_max);
-            memset(section->labels, 0, sizeof(Label) * section->labels_max);
-            memset(section->objects, 0, sizeof(Object) * section->objects_max);
-
-            estimated_addressLow = 0;
-            estimated_addressHigh = 0;
-
+            
             continue;
         }
 
@@ -885,7 +917,8 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
         estimated_addressHigh += instBytes;
     }
     
-    context->sections[context->sections_len-1].size = estimated_addressHigh;
+    context->sections[context->sections_len-1].estimatedAddress_low = estimated_addressLow;
+    context->sections[context->sections_len-1].estimatedAddress_high = estimated_addressHigh;
     
     
     //###########################
@@ -925,7 +958,7 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
             label->estimated_addressHigh += section->addr;
             // printf("Label %s, 0x%zx 0x%zx\n", label->name.ptr, label->estimated_addressLow, label->estimated_addressHigh);
         }
-        uint64_t newRomSize = section->addr + section->size;
+        uint64_t newRomSize = section->addr + section->estimatedAddress_high;
         if (newRomSize > rom_max) {
             rom_max = newRomSize;
         }

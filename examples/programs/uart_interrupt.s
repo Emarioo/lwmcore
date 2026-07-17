@@ -10,7 +10,7 @@ ex_msg:
 uart_msg:
     byte[] "UART: \0"
 
-
+align 4
 counter:
     long 0
 
@@ -88,6 +88,8 @@ init_vector:
 
     ret
 
+section ".data"
+align 2
 saved_ctx:
     short[4]
 
@@ -105,6 +107,8 @@ saved_ctx:
     ldh r1, [saved_ctx+4]
     ldh r2, [saved_ctx+6]
 #endmacro
+
+section ".text"
 
 ex_handler_uart_rx:
     mfcr sp, CRESP

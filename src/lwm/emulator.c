@@ -159,8 +159,6 @@ void mmu_operation(CoreState* core, MMUOperation operation, uint64_t in_address,
         } else if (core->mode == MODE_32) {
             uint32_t entry;
 
-            // @TODO Implement huge bit
-            
             index = (virt_address >> 22) & 0x3FF;
             mmu_operation(core, MMU_READ, pageDirectory + index * 4, 4, &entry, true);
             flags = entry & 0xFFF;
@@ -215,29 +213,32 @@ void mmu_operation(CoreState* core, MMUOperation operation, uint64_t in_address,
         } else {
             Assert(false);
         }
-
     }
 
-    for (int i=0;i<emulator->platformConfig->devices_len;i++) {
-        HardwareDevice* dev = emulator->platformConfig->devices[i];
-        switch (operation) {
-            case MMU_READ:
-            case MMU_READ_EXEC: {
-                if (dev->mmio_read) {
-                    bool res = dev->mmio_read(emulator, dev, phys_address, size, data);
-                    if (res) {
-                        return;
-                    }
+    if (phys_address >= emulator->mmio_start && phys_address < emulator->mmio_end) {
+        if (operation == MMU_WRITE) {
+            for (int i=0;i<emulator->mmioWriteDevices_len;i++) {
+                HardwareDevice* dev = emulator->mmioWriteDevices[i];
+                if (!(phys_address >= dev->mmio_start && phys_address < dev->mmio_end))
+                    continue;
+
+                bool res = dev->mmio_write(dev, phys_address, size, data);
+                if (res) {
+                    return;
                 }
-            } break;
-            case MMU_WRITE: {
-                if (dev->mmio_write) {
-                    bool res = dev->mmio_write(emulator, dev, phys_address, size, data);
-                    if (res) {
-                        return;
-                    }
+            }
+        } else if (operation == MMU_READ) {
+            // READ_EXEC is never MMIO.
+            for (int i=0;i<emulator->mmioReadDevices_len;i++) {
+                HardwareDevice* dev = emulator->mmioReadDevices[i];
+                if (!(phys_address >= dev->mmio_start && phys_address < dev->mmio_end))
+                    continue;
+
+                bool res = dev->mmio_read(dev, phys_address, size, data);
+                if (res) {
+                    return;
                 }
-            } break;
+            }
         }
     }
 
@@ -769,6 +770,7 @@ void emulator_start(PlatformConfig* config) {
 
     for (int i=0;i<config->devices_len;i++) {
         HardwareDevice* device = config->devices[i];
+        device->emulator = emulator;
 
         if (!device->sharedLibrary) {
             device->sharedLibrary = load_library(device->sharedLibraryPath);
@@ -777,22 +779,58 @@ void emulator_start(PlatformConfig* config) {
                 exit(1);
             }
         }
-        if (!device->init) {
-            device->init = symbol_from_library(device->sharedLibrary, DEVICE_FUNC_INIT);
-            if (!device->init) {
-                fprintf(stderr, "\033[31mERROR:\033[0m Could not find '%s' in '%s'\n", DEVICE_FUNC_INIT, device->sharedLibraryPath);
+        if (!device->event) {
+            device->event = symbol_from_library(device->sharedLibrary, FUNC_DEVICE_EVENT);
+            if (!device->event) {
+                fprintf(stderr, "\033[31mERROR:\033[0m Could not find '%s' in '%s'\n", FUNC_DEVICE_EVENT, device->sharedLibraryPath);
                 exit(1);
             }
         }
     }
+
+    emulator->mmioReadDevices_len = 0;
+    emulator->mmioReadDevices = malloc(sizeof(*emulator->mmioReadDevices) * config->devices_len);
+    emulator->mmioWriteDevices_len = 0;
+    emulator->mmioWriteDevices = malloc(sizeof(*emulator->mmioWriteDevices) * config->devices_len);
+    emulator->tickDevices_len = 0;
+    emulator->tickDevices = malloc(sizeof(*emulator->tickDevices) * config->devices_len);
 
     // We initialize devices after we have found all shared libraries and functions.
     // Otherwise display device may create a window which will be instantly shutdown
     // if the library for the next device can't be found.
     for (int i=0;i<config->devices_len;i++) {
         HardwareDevice* device = config->devices[i];
-        device->init(emulator, device);
+        device->event(device, EVENT_INIT, 0, 0, 0, 0);
+
+        if (device->mmio_start != device->mmio_end) {
+            if (device->mmio_read) {
+                emulator->mmioReadDevices[emulator->mmioReadDevices_len] = device;
+                emulator->mmioReadDevices_len++;
+            }
+            if (device->mmio_write) {
+                emulator->mmioWriteDevices[emulator->mmioWriteDevices_len] = device;
+                emulator->mmioWriteDevices_len++;
+            }
+
+            if (emulator->mmio_start == emulator->mmio_end) {
+                emulator->mmio_start = device->mmio_start;
+                emulator->mmio_end   = device->mmio_end;
+            } else {
+                if (device->mmio_start < emulator->mmio_start) {
+                    emulator->mmio_start = device->mmio_start;
+                }
+                if (device->mmio_end > emulator->mmio_end) {
+                    emulator->mmio_end   = device->mmio_end;
+                }
+            }
+        }
+
+        if (device->tick) {
+            emulator->tickDevices[emulator->tickDevices_len] = device;
+            emulator->tickDevices_len++;
+        }
     }
+
 
     emulator->cores = malloc(sizeof(CoreState) * config->core_count);
     memset(emulator->cores, 0, sizeof(CoreState) * config->core_count);
@@ -846,18 +884,17 @@ void emulator_start(PlatformConfig* config) {
 
         core->tickCounter++;
 
-        for (int i=0;i<config->devices_len;i++) {
-            HardwareDevice* device = config->devices[i];
-            if (device->tick) {
-                device->tick(emulator, device);
-            }
+        for (int i=0;i<emulator->tickDevices_len;i++) {
+            HardwareDevice* device = emulator->tickDevices[i];
+            device->tick(device);
         }
+
         if (core->tickCounter == core->crtimercmp) {
             ENABLE_PENDING_VECTOR(core, VECTOR_TIMER_INTERRUPT);
         }
 
         bool canHandleInterrupt = (core->crstatus & CRSTATUS_INTERRUPT);
-        if (canHandleInterrupt) {
+        if (canHandleInterrupt && ANY_PENDING_VECTOR(core)) {
             for (int vi=0;vi<MAX_VECTORS;vi++) {
                 int pending = GET_PENDING_VECTOR(core, vi);
                 if (pending) {
@@ -903,13 +940,18 @@ void emulator_start(PlatformConfig* config) {
         printf("Stop emulator (%zu us, %zu steps, %zu steps/sec)\n", ns / 1000, steps, steps_per_sec);
         emulator_dump_state(emulator);
     }
+
+    for (int i=0;i<config->devices_len;i++) {
+        HardwareDevice* device = config->devices[i];
+        device->event(device, EVENT_DEINIT, 0, 0, 0, 0);
+    }
 }
 
 #define INCOMPLETE_INST(...) do { printf(__VA_ARGS__); hard_fault(core); } while (0)
 
-// #define LOG_INST(FMT, ...)
+// By disabling log feature we get some more performance. 10%?
 #define LOG_INST(FMT, ...) if (!emulator->platformConfig->quiet && emulator->platformConfig->verbose) { printf("0x%03zx: " FMT, pc __VA_OPT__(,) __VA_ARGS__); }
-// #define LOG_INST(FMT, ...) printf("0x%03zx: " FMT, pc __VA_OPT__(,) __VA_ARGS__);
+// #define LOG_INST(FMT, ...)
 
 void emulator_step(EmulatorContext* emulator, int cpuid) {
     CoreState* core = &emulator->cores[cpuid];
@@ -928,7 +970,6 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
     int32_t  relative = 0;
     int      bytes;
 
-    // printf("Opcode %d\n", opcodeByte);
 
     opcode = opcodeByte;
     switch (opcode) {

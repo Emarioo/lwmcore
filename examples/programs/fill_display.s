@@ -74,6 +74,17 @@ iter:
     jmp .loop
 .end:
 
+// Uncomment to draw a second frame
+;     li r0, 0xFF00FFFF
+;     li r1, 4
+;     li r2, 0
+; .loop2:
+;     stl r0, [#DISPLAY_FRAMEBUFFER + r2]
+;     add r2, r2, r1
+;     jeq r2, r6, .end2
+;     jmp .loop2
+; .end2:
+
 ; Uncommenting gives raylib time to fully render the display.
 ;     li r0, 100
 ;     li r1, 1

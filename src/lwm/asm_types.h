@@ -73,5 +73,8 @@ typedef struct {
     int     labels_len;
     int     labels_max;
     Label*  labels;
+
+    uint64_t estimatedAddress_low; // relative to section
+    uint64_t estimatedAddress_high;
 } Section;
 

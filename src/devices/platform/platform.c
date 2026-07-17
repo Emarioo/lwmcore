@@ -25,12 +25,8 @@
 //    Device Functions
 //########################
 
-
-bool device_init(EmulatorContext* emulator, HardwareDevice* device);
-bool platform_mmio_write(EmulatorContext* emulator, HardwareDevice* device, uintptr_t address, size_t size, void* data);
-bool platform_mmio_read(EmulatorContext* emulator, HardwareDevice* device, uintptr_t address, size_t size, void* data);
-void platform_tick(EmulatorContext* emulator, HardwareDevice* device);
-
+bool device_read(HardwareDevice* device, uintptr_t address, size_t size, void* data);
+bool device_write(HardwareDevice* device, uintptr_t address, size_t size, void* data);
 
 //########################
 //    Implementation
@@ -50,26 +46,44 @@ typedef struct {
 } Platform_State;
 
 
-bool device_init(EmulatorContext* emulator, HardwareDevice* device) {
-    Platform_State* state = malloc(sizeof(*state));
-    memset(state, 0, sizeof(*state));
+bool device_event(HardwareDevice* device, HardwareEvent eventType, uintptr_t arg0, uintptr_t arg1, uintptr_t arg2, uintptr_t arg3) {
+    EmulatorContext* emulator = device->emulator;
+    Platform_State*  state    = device->state;
 
-    device->state           = state;
-    device->mmio_write      = platform_mmio_write;
-    device->mmio_read       = platform_mmio_read;
-    // device->tick            = platform_tick;
-    return true;
+    switch (eventType) {
+        case EVENT_INIT: {
+            state = malloc(sizeof(*state));
+            memset(state, 0, sizeof(*state));
+            device->state     = state;
+            device->eventMask = 0;
+            device->mmio_read = device_read;
+            device->mmio_write = device_write;
+
+            declare_mmio(device, PLATFORM_BASE, 0x20);
+
+            return true;
+        } break;
+        default:
+    }
+    return false;
 }
-
-
-void platform_tick(EmulatorContext* emulator, HardwareDevice* device) {
-    Platform_State* state = device->state;
-
+bool device_read(HardwareDevice* device, uintptr_t address, size_t size, void* data) {
+    EmulatorContext*  emulator = device->emulator;
+    Platform_State*  state    = device->state;
+    
+    if (size < 1 || size > 8)
+    return false;
+    
+    if (address >= PLATFORM_CORE_TICK_FREQ && address <= PLATFORM_CORE_TICK_FREQ + 8 - size) {
+        memcpy(data, (char*)&emulator->cores->avgTickFrequency + address - PLATFORM_CORE_TICK_FREQ, size);
+        return true;
+    }
+    
+    return false;
 }
-
-bool platform_mmio_write(EmulatorContext* emulator, HardwareDevice* device, uintptr_t address, size_t size, void* data) {
-    Platform_State* state = device->state;
-    // printf("PLATFORM MMIO 0x%zx %zd %c\n", address, size, *(char*)data);
+bool device_write(HardwareDevice* device, uintptr_t address, size_t size, void* data) {
+    EmulatorContext*  emulator = device->emulator;
+    Platform_State*  state     = device->state;
     
     if (size < 1 || size > 8)
         return false;
@@ -92,21 +106,6 @@ bool platform_mmio_write(EmulatorContext* emulator, HardwareDevice* device, uint
                 emulator_reset_core(emulator, state->ram.core_cpuid);
             }
         }
-        return true;
-    }
-    return false;
-}
-
-
-bool platform_mmio_read(EmulatorContext* emulator, HardwareDevice* device, uintptr_t address, size_t size, void* data) {
-    Platform_State* state = device->state;
-    // printf("IC MMIO 0x%zx %zd %c\n", address, size, *(char*)data);
-
-    if (size < 1 || size > 8)
-        return false;
-    
-    if (address >= PLATFORM_CORE_TICK_FREQ && address <= PLATFORM_CORE_TICK_FREQ + 8 - size) {
-        memcpy(data, (char*)&emulator->cores->avgTickFrequency + address - PLATFORM_CORE_TICK_FREQ, size);
         return true;
     }
     return false;

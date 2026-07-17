@@ -17,6 +17,8 @@ else
 endif
 
 SILENT ?= @
+OFLAG  ?=
+export OFLAG # export to device makefiles
 
 ################################
 
@@ -25,7 +27,7 @@ ROOT := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 
 CC := gcc
 
-CFLAGS := -g -O3
+CFLAGS := -g $(OFLAG)
 CFLAGS += -I$(ROOT)/include -I$(ROOT)/src
 CFLAGS += -Wall -Werror -fshort-wchar -Werror=implicit-function-declaration
 CFLAGS += -Wno-multichar

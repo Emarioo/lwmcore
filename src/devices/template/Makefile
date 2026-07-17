@@ -26,7 +26,7 @@ SILENT ?= @
 
 CC := gcc
 
-CFLAGS += -g -O3
+CFLAGS += -g $(OFLAG)
 CFLAGS += -I$(ROOT)/include -I$(DEVICE_ROOT)
 CFLAGS += -Wall -Werror -fshort-wchar -Werror=implicit-function-declaration
 CFLAGS += -Wno-multichar

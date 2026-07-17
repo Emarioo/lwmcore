@@ -252,6 +252,7 @@ ex_handler_double_fault:
 syscall_msg:
     byte[] "syscall \0"
 
+align 2
 save_context:
     short[32]
 

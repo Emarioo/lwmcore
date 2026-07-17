@@ -1,3 +1,6 @@
+/*
+    Compiled by devices and the emulator.
+*/
 
 #include "lwm/emulator.h"
 
@@ -27,8 +30,8 @@ void emulator_raise_vector(EmulatorContext* emulator, int cpuid, int vector) {
 void emulator_request_interrupt(EmulatorContext* emulator, int irq_number) {
     for (int i=0;i<emulator->platformConfig->devices_len;i++) {
         HardwareDevice* device = emulator->platformConfig->devices[i];
-        if (device->queue_interrupt) {
-            device->queue_interrupt(emulator, device, irq_number);
+        if (device->eventMask & EVENT_INTERRUPT) {
+            device->event(device, EVENT_INTERRUPT, irq_number, 0, 0, 0);
             break;
         }
     }
@@ -42,11 +45,11 @@ void emulator_boot_core(EmulatorContext* emulator, int cpuid, uintptr_t entry) {
     if (core->running)
         return;
 
+    core->running = true;
     core->pc = entry;
     core->crstatus = 0;
     core->crcpuid = cpuid;
     core->crtimercmp = 0;
-    core->running = true;
 }
 
 void emulator_reset_core(EmulatorContext* emulator, int cpuid) {
@@ -55,4 +58,19 @@ void emulator_reset_core(EmulatorContext* emulator, int cpuid) {
 
     CoreState* core = &emulator->cores[cpuid];
     core->running = false;
+}
+
+
+void declare_mmio(HardwareDevice* device, uintptr_t address, size_t size) {
+    if (device->mmio_start == device->mmio_end) {
+        device->mmio_start = address;
+        device->mmio_end   = address + size;
+    } else {
+        if (address < device->mmio_start) {
+            device->mmio_start = address;
+        }
+        if (address + size > device->mmio_end) {
+            device->mmio_end   = address + size;
+        }
+    }
 }

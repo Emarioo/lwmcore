@@ -32,6 +32,7 @@ core_msg:
 ipi_msg:
     byte[] "ipi\n\0"
 
+align 4
 vector:
     long[12] #repeat 11 "ex_handler, " ex_handler
 
@@ -108,7 +109,7 @@ putstring:
     pop lr
     ret
 
-
+align 2
 saved_ctx:
     short[4]
 

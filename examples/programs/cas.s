@@ -13,6 +13,7 @@
 section .text 0x0
     jmp main
 
+align 4
 global_counter:
     long
 core0_counter:
@@ -83,6 +84,7 @@ core_entry:
 
     hlt
 
+align 4
 mutex_lock:
     long
 

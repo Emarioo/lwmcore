@@ -59,7 +59,7 @@ typedef struct {
     // First 32 bits are unused because interrupt controller is not
     // allowed to send interrupts to exception handler vectors like page fault.
     // Ignored if you do i guess?
-    uint32_t pendingVectors[MAX_VECTORS/32];
+    uint64_t pendingVectors[MAX_VECTORS/64];
 
     uint64_t tickCounter;
     uint64_t avgTickFrequency;
@@ -74,6 +74,8 @@ typedef struct {
 
 
 #define BITS_PER_PENDING_VECTOR_INDEX(CORE) (8*sizeof(*(CORE)->pendingVectors))
+#define ANY_PENDING_VECTOR(CORE) \
+    ((CORE)->pendingVectors[0])
 #define GET_PENDING_VECTOR(CORE, VECTOR) \
     (((CORE)->pendingVectors[VECTOR/BITS_PER_PENDING_VECTOR_INDEX(CORE)] >> (VECTOR%BITS_PER_PENDING_VECTOR_INDEX(CORE))) & 1)
 #define ENABLE_PENDING_VECTOR(CORE, VECTOR) \
@@ -84,27 +86,32 @@ typedef struct {
 
 typedef struct HardwareDevice HardwareDevice;
 
-#define DEVICE_FUNC_INIT  "device_init"
+#define FUNC_DEVICE_EVENT "device_event"
 
-typedef bool(*FN_mmio_read)      (EmulatorContext* emulator, HardwareDevice* device, uintptr_t address, size_t size, void* data);
-typedef bool(*FN_mmio_write)     (EmulatorContext* emulator, HardwareDevice* device, uintptr_t address, size_t size, void* data);
-typedef void(*FN_tick)           (EmulatorContext* emulator, HardwareDevice* device);
-typedef bool(*FN_init)           (EmulatorContext* emulator, HardwareDevice* device);
-typedef void(*FN_queue_interrupt)(EmulatorContext* emulator, HardwareDevice* device, int irq_number);
+typedef enum {
+    EVENT_INIT        = 0x1,
+    EVENT_DEINIT      = 0x2,
+    EVENT_INTERRUPT   = 0x4, // Only used by interrupt controller
+} HardwareEvent;
+
+typedef bool(*FN_event)(HardwareDevice* device, HardwareEvent eventType, uintptr_t arg0, uintptr_t arg1, uintptr_t arg2, uintptr_t arg3);
+typedef bool(*FN_mmio)(HardwareDevice* device, uintptr_t address, size_t size, void* data);
+typedef bool(*FN_tick)(HardwareDevice* device);
 
 struct HardwareDevice {
+    EmulatorContext*   emulator;
     const char*        sharedLibraryPath;
     void*              sharedLibrary;
     void*              state;
     void*              user_data;
-    FN_init            init;
-    // @TODO deinit so we can join threads that were created.
-    //    Needed for display device which creates a raylib thread which
-    //    segfaults at the end because we don't clean it up (I assume that's why we segfault)
+    FN_event           event;
+    HardwareEvent      eventMask;
+    FN_mmio            mmio_read;
+    FN_mmio            mmio_write;
     FN_tick            tick;
-    FN_mmio_read       mmio_read;
-    FN_mmio_write      mmio_write;
-    FN_queue_interrupt queue_interrupt; // Only for interrupt controllers
+
+    uintptr_t          mmio_start;
+    uintptr_t          mmio_end;
 };
 
 typedef struct {
@@ -133,6 +140,16 @@ struct EmulatorContext {
     uint8_t* physicalMemory;
     uint64_t physicalMemory_size;
 
+    uintptr_t mmio_start;
+    uintptr_t mmio_end;
+
+    int              mmioReadDevices_len;
+    HardwareDevice** mmioReadDevices;
+    int              mmioWriteDevices_len;
+    HardwareDevice** mmioWriteDevices;
+    int              tickDevices_len;
+    HardwareDevice** tickDevices;
+
     uint32_t randomState;
 
     CoreState* cores;
@@ -144,3 +161,8 @@ void emulator_raise_vector(EmulatorContext* emulator, int cpuid, int vector);
 
 void emulator_boot_core(EmulatorContext* emulator, int cpuid, uintptr_t entry);
 void emulator_reset_core(EmulatorContext* emulator, int cpuid);
+
+void declare_mmio(HardwareDevice* device, uintptr_t address, size_t size);
+
+// Defined in the device code
+bool device_event(HardwareDevice* device, HardwareEvent eventType, uintptr_t arg0, uintptr_t arg1, uintptr_t arg2, uintptr_t arg3);
