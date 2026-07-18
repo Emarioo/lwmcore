@@ -14,17 +14,7 @@
 
 
 
-#define PAGING_ENABLED() (core->crstatus & CRSTATUS_PAGING)
-#define INTERRUPT_ENABLED() (core->crstatus & CRSTATUS_INTERRUPT)
 #define USER_ENABLED() (core->crstatus & CRSTATUS_USER)
-
-#define  READ8(address) read_exec_address8(core, address)
-#define READ16(address) read_exec_address16(core, address)
-#define READ32(address) read_exec_address32(core, address)
-#define READ64(address) read_exec_address64(core, address)
-
-
-#define BITMASK(WORD, BL, BH) ( ((WORD) >> BL) & ( ((uint64_t)1 << ((1+BH)-BL)) - 1 ) )
 
 #define REGISTER_BYTESIZE() (2 << core->mode)
 
@@ -67,11 +57,6 @@ void check_privilege(CoreState* core) {
 }
 
 
-typedef enum {
-    MMU_READ,
-    MMU_WRITE,
-    MMU_READ_EXEC,
-} MMUOperation;
 
 void mmu_check_flags(CoreState* core, MMUOperation operation, uintptr_t virt_address, int flags) {
 
@@ -96,7 +81,7 @@ void mmu_check_flags(CoreState* core, MMUOperation operation, uintptr_t virt_add
     }
     mmuOpCause |= CRCAUSE_PRESENT;
 
-    if (USER_ENABLED() && !(flags & PAGE_BIT_USER)) {
+    if ((core->crstatus & CRSTATUS_USER) && !(flags & PAGE_BIT_USER)) {
         SET_CAUSE(CRCAUSE_USER | mmuOpCause);
         emulator_trigger_exception(core, VECTOR_PAGE_FAULT);
     }
@@ -137,7 +122,7 @@ void mmu_operation(CoreState* core, MMUOperation operation, uint64_t in_address,
 
 
     uintptr_t phys_address;
-    if (physical || !PAGING_ENABLED()) {
+    if (physical || (core->crstatus & CRSTATUS_PAGING) == 0) {
         phys_address = in_address;
     } else {
         const uintptr_t virt_address = in_address;
@@ -325,311 +310,6 @@ static inline void write_address64(CoreState* core, uint64_t address, uint64_t v
     mmu_operation(core, MMU_WRITE, address, 8, &value, false);
 }
 
-
-
-int decode_form_reg1_imm(CoreState* core, uint64_t pc, uint32_t opcodeBase, uint32_t* opcode, uint8_t regs[1], uint64_t* immediate) {
-
-    uint32_t tmp_opcode = READ8(pc);
-    if (opcode) {
-        *opcode = tmp_opcode;
-    }
-    regs[0] = READ8(pc + 1);
-
-    int immediateSize = 1 << (tmp_opcode - opcodeBase);
-
-    if (opcodeBase == OPCODE_LIS8) {
-        if (immediateSize == 1)
-            *immediate = (int64_t)(int8_t)READ8(pc + 2);
-        else if (immediateSize == 2)
-            *immediate = (int64_t)(int16_t)READ16(pc + 2);
-        else if (immediateSize == 4)
-            *immediate = (int64_t)(int32_t)READ32(pc + 2);
-        else if (immediateSize == 8)
-            *immediate = (int64_t)READ64(pc + 2);
-    } else {
-        if (immediateSize == 1)
-            *immediate = (uint64_t)(uint8_t)READ8(pc + 2);
-        else if (immediateSize == 2)
-            *immediate = (uint64_t)(uint16_t)READ16(pc + 2);
-        else if (immediateSize == 4)
-            *immediate = (uint64_t)(uint32_t)READ32(pc + 2);
-        else if (immediateSize == 8)
-            *immediate = (uint64_t)READ64(pc + 2);
-    }
-
-    return 2 + immediateSize;
-}
-
-
-int decode_form_reg1(CoreState* core, uint64_t pc, uint32_t* opcode, uint8_t regs[1]) {
-
-    uint32_t tmp_opcode = READ8(pc);
-    if (opcode) {
-        *opcode = tmp_opcode;
-    }
-
-    regs[0] = READ8(pc+1);
-
-    return 2;
-}
-
-int decode_form_reg2(CoreState* core, uint64_t pc, uint32_t* opcode, uint8_t regs[2]) {
-
-    uint32_t tmp_opcode = READ8(pc);
-    if (opcode) {
-        *opcode = tmp_opcode;
-    }
-
-    regs[0] = READ8(pc+1);
-    regs[1] = READ8(pc+2);
-
-    return 3;
-}
-
-int decode_form_reg3(CoreState* core, uint64_t pc, uint32_t* opcode, uint8_t regs[3]) {
-
-    uint32_t tmp_opcode = READ8(pc);
-    if (opcode) {
-        *opcode = tmp_opcode;
-    }
-
-    regs[0] = READ8(pc+1);
-    regs[1] = READ8(pc+2);
-    regs[2] = READ8(pc+3);
-
-    return 4;
-}
-
-int decode_form_reg4(CoreState* core, uint64_t pc, uint32_t* opcode, uint8_t regs[4]) {
-
-    uint32_t tmp_opcode = READ8(pc);
-    if (opcode) {
-        *opcode = tmp_opcode;
-    }
-
-    regs[0] = READ8(pc+1);
-    regs[1] = READ8(pc+2);
-    regs[2] = READ8(pc+3);
-    regs[3] = READ8(pc+4);
-
-    return 5;
-}
-
-int decode_form_pc(CoreState* core, uint64_t pc, uint32_t opcodeBase, uint32_t* opcode, int32_t* immediate) {
-
-    uint32_t tmp_opcode = READ8(pc);
-    if (opcode) {
-        *opcode = tmp_opcode;
-    }
-
-    int immediateSize = 1 << (tmp_opcode - opcodeBase);
-
-    if (immediateSize == 1)
-        *immediate = (int8_t)READ8(pc + 1);
-    else if (immediateSize == 2)
-        *immediate = (int16_t)READ16(pc + 1);
-    else if (immediateSize == 4)
-        *immediate = (int32_t)READ32(pc + 1);
-
-    return 1 + immediateSize;
-}
-
-int decode_form_jmp_reg1(CoreState* core, uint64_t pc, uint32_t* opcode, uint8_t regs[1], int32_t* relative) {
-
-    uint32_t tmp_opcode = READ8(pc);
-    if (opcode) {
-        *opcode = tmp_opcode;
-    }
-
-    // [opcode 8 | flags 3 | reg 5 | relative8/16/32 ]
-    // flags 3 = relsize 2 | reserved 1
-
-    uint8_t word = (uint8_t)READ8(pc+1);
-
-    int flags = BITMASK(word, 0, 2);
-    regs[0]   = BITMASK(word, 3, 7);
-
-    int immediateSize = 1 << (flags & 0x3);
-
-    if (immediateSize == 1)
-        *relative = (int8_t)READ8(pc + 2);
-    else if (immediateSize == 2)
-        *relative = (int16_t)READ16(pc + 2);
-    else if (immediateSize == 4)
-        *relative = (int32_t)READ32(pc + 2);
-
-    return 2 + immediateSize;
-}
-
-int decode_form_jmp_reg2(CoreState* core, uint64_t pc, uint32_t* opcode, ConditionKind* cond, uint8_t regs[2], int32_t* relative) {
-
-    uint32_t tmp_opcode = READ8(pc);
-    if (opcode) {
-        *opcode = tmp_opcode;
-    }
-
-    // [opcode 8 | flags 6 | reg 5 | reg 5 | relative8/16/32 ]
-    // flags 6 = relsize 2 | cond 4
-
-    uint16_t word = (uint16_t)READ8(pc+1) | ((uint16_t)READ8(pc+2) << 8);
-
-    int flags = BITMASK(word, 0, 5);
-    regs[0] = BITMASK(word, 6, 10);
-    regs[1] = BITMASK(word, 11, 15);
-
-    int immediateSize = 1 << (flags & 0x3);
-    int condition     = (flags >> 2) & 0x3F;
-
-    *cond = condition;
-
-    if (immediateSize == 1)
-        *relative = (int8_t)READ8(pc + 3);
-    else if (immediateSize == 2)
-        *relative = (int16_t)READ16(pc + 3);
-    else if (immediateSize == 4)
-        *relative = (int32_t)READ32(pc + 3);
-
-    return 3 + immediateSize;
-}
-
-int decode_form_memory(CoreState* core, uint64_t pc, uint32_t* opcode, uint8_t regs[4], AddressingForm* addressingForm, int64_t* displacement) {
-    /*
-    lea r0, [r1 + disp8/16/32]
-        [ opcode 8 | reg 5 | reg 5 | disp8 ]
-        [ opcode 8 | reg 5 | reg 5 | disp16 ]
-        [ opcode 8 | reg 5 | reg 5 | disp32 ]
-
-    lea r0, [r1 + r2 + disp8/16/32]
-        [ opcode 8 | reg 5 | reg 5 | reg 5 | disp8 ]
-        [ opcode 8 | reg 5 | reg 5 | reg 5 | disp16 ]
-        [ opcode 8 | reg 5 | reg 5 | reg 5 | disp32 ]
-
-    lea r0, [pc + disp8/16/32]
-        [ opcode 8 | reg 5 | disp8/16/64 ]
-
-    lea r0, [16/32/64]
-        [ opcode 8 | reg 5 | disp16/32/64 ]
-
-    All fields excluding flags
-        [ opcode 8 | reg 5 | reg 5 | reg 5 | disp8/16/32/64 ]
-
-    Base memory encoding
-        [ opcode 8 | flags 3 | reg 5 ]
-    */
-
-    regs[0] = 0; // Clear since we may not set them and code that checks valid
-    regs[1] = 0; // registers won't fail because of uninitialized values.
-    regs[2] = 0;
-    regs[3] = 0;
-
-    uint32_t tmp_opcode = READ8(pc);
-    if (opcode) {
-        *opcode = tmp_opcode;
-    }
-
-    uint8_t word = (uint8_t)READ8(pc+1);
-    
-    int flags = BITMASK(word, 0, 2);
-    regs[0]   = BITMASK(word, 3, 7);
-
-    if (tmp_opcode == OPCODE_CAS) {
-        regs[1] = READ8(pc+2);
-    }
-    
-    int baseBytes = tmp_opcode == OPCODE_CAS ? 3 : 2;
-    int memoryRegIndexBase = tmp_opcode == OPCODE_CAS ? 2 : 1;
-
-    AddressingForm form = ADDRESSING_ENUM(flags, 0);
-    *addressingForm = form;
-
-    if (form == ADDRESSING_ABS16) {
-        *displacement = (uint16_t)READ16(pc + baseBytes);
-        return largest_encoding(tmp_opcode, form);
-
-    } else if (form == ADDRESSING_ABS32) {
-        *displacement = (uint32_t)READ32(pc + baseBytes);
-        return largest_encoding(tmp_opcode, form);
-
-    } else if (form == ADDRESSING_ABS64) {
-        *displacement = (uint64_t)READ64(pc + baseBytes);
-        return largest_encoding(tmp_opcode, form);
-
-    } else if (form == ADDRESSING_REG1_DISP8) {
-
-        uint8_t extraWord = (uint8_t)READ8(pc + baseBytes);
-        int extraFlags = BITMASK(extraWord, 0, 2);
-        regs[memoryRegIndexBase]   = BITMASK(extraWord, 3, 7);
-
-        form = ADDRESSING_ENUM(flags, extraFlags);
-        *addressingForm = form;
-
-        if (form == ADDRESSING_REG1_DISP8) {
-            *displacement = (int8_t)READ8(pc + baseBytes + 1);
-            return largest_encoding(tmp_opcode, form);
-        } else if (form == ADDRESSING_REG1_DISP16) {
-            *displacement = (int16_t)READ16(pc + baseBytes + 1);
-            return largest_encoding(tmp_opcode, form);
-        } else if (form == ADDRESSING_REG1_DISP32) {
-            *displacement = (int32_t)READ32(pc + baseBytes + 1);
-            return largest_encoding(tmp_opcode, form);
-        } else if (form == ADDRESSING_REG1_DISP64) {
-            *displacement = (int64_t)READ64(pc + baseBytes + 1);
-            return largest_encoding(tmp_opcode, form);
-        } else if (form == ADDRESSING_REG1_PC_DISP8) {
-            *displacement = (int8_t)READ8(pc + baseBytes + 1);
-            return largest_encoding(tmp_opcode, form);
-        } else if (form == ADDRESSING_REG1_PC_DISP16) {
-            *displacement = (int16_t)READ16(pc + baseBytes + 1);
-            return largest_encoding(tmp_opcode, form);
-        } else if (form == ADDRESSING_REG1_PC_DISP32) {
-            *displacement = (int32_t)READ32(pc + baseBytes + 1);
-            return largest_encoding(tmp_opcode, form);
-        } else {
-            emulator_trigger_exception(core, VECTOR_ILLEGAL_INSTRUCTION);
-        }
-
-    } else if (form == ADDRESSING_REG2_DISP8) {
-        
-        uint16_t extraWord = (uint16_t)READ16(pc + baseBytes);
-        int extraFlags = BITMASK(extraWord, 0, 2) | (BITMASK(extraWord, 8, 10) << 3);
-        regs[memoryRegIndexBase]   = BITMASK(extraWord, 3, 7);
-        regs[memoryRegIndexBase + 1]   = BITMASK(extraWord, 11, 15);
-        
-        form = ADDRESSING_ENUM(flags, extraFlags);
-        *addressingForm = form;
-
-        if (form == ADDRESSING_REG2_DISP8) {
-            *displacement = (int8_t)READ8(pc + baseBytes + 2);
-            return largest_encoding(tmp_opcode, form);
-        } else if (form == ADDRESSING_REG2_DISP16) {
-            *displacement = (int16_t)READ16(pc + baseBytes + 2);
-            return largest_encoding(tmp_opcode, form);
-        } else if (form == ADDRESSING_REG2_DISP32) {
-            *displacement = (int32_t)READ32(pc + baseBytes + 2);
-            return largest_encoding(tmp_opcode, form);
-        } else {
-            emulator_trigger_exception(core, VECTOR_ILLEGAL_INSTRUCTION);
-        }
-
-    } else if (form == ADDRESSING_PC_DISP8) {
-        *displacement = (int8_t)READ8(pc + baseBytes);
-        return largest_encoding(tmp_opcode, form);
-        
-    } else if (form == ADDRESSING_PC_DISP16) {
-        *displacement = (int16_t)READ16(pc + baseBytes);
-        return largest_encoding(tmp_opcode, form);
-        
-    } else if (form == ADDRESSING_PC_DISP32) {
-        *displacement = (int32_t)READ32(pc + baseBytes);
-        return largest_encoding(tmp_opcode, form);
-
-    } else {
-        emulator_trigger_exception(core, VECTOR_ILLEGAL_INSTRUCTION);
-    }
-
-    emulator_trigger_exception(core, VECTOR_ILLEGAL_INSTRUCTION);
-    return 0;
-}
 
 void emulator_step(EmulatorContext* emulator, int coreIndex);
 
@@ -839,6 +519,8 @@ void emulator_start(PlatformConfig* config) {
     for (int i=0;i<config->core_count;i++) {
         CoreState* core = &emulator->cores[i];
         core->emulator = emulator;
+        core->decoder.core = core;
+        core->decoder.mmu_operation = (FN_mmu_operation)mmu_operation;
         core->mode = config->core_mode;
     }
 
@@ -960,7 +642,7 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
 
     uint64_t pc = core->pc;
     uint8_t  opcodeByte;
-    uint32_t opcode;
+    uint32_t opcode = 0xFFFFFFF;
     uint64_t next_pc = -1;
     uint8_t  regs[4];
     uint64_t immediate = 0;
@@ -970,13 +652,15 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
     AddressingForm addressingForm;
     int64_t displacement;
 
-    // bytes = decode_inst(core, pc, &opcode, &regs, &immediate, &cond, &addressingForm);
-    // relative = (int32_t)(uint32_t)immediate;
-    // displacement = (int64_t)immediate;
+    bytes = decode_inst(&core->decoder, pc, &opcode, regs, &immediate, &cond, &addressingForm);
+    relative = (int32_t)(uint32_t)immediate;
+    displacement = (int64_t)immediate;
 
-    opcodeByte = READ8(pc);
+    if (bytes == 0) {
+        printf("Exception ILLEGAL instruction at 0x%zx. Unknown opcode %d\n", pc, opcode);
+        emulator_trigger_exception(core, VECTOR_ILLEGAL_INSTRUCTION);
+    }
 
-    opcode = opcodeByte;
     switch (opcode) {
         case OPCODE_LI8:
         case OPCODE_LI16:
@@ -987,8 +671,6 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
         case OPCODE_LIS32:
         case OPCODE_LIS64:
         {
-            int opcodeBase = opcode >= OPCODE_LIS8 ? OPCODE_LIS8 : OPCODE_LI8;
-            bytes = decode_form_reg1_imm(core, pc, opcodeBase, NULL, regs, &immediate);
             check_registers(core, regs, 1);
 
             if (opcode == OPCODE_LI32 && core->mode < MODE_32) {
@@ -1014,7 +696,6 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
         } break;
         case OPCODE_CALL_REG:
         {
-            bytes = decode_form_reg1(core, pc, NULL, regs);
             check_registers(core, regs, 1);
 
             core->lr = pc + bytes;
@@ -1024,7 +705,6 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
         } break;
         case OPCODE_JMP_REG:
         {
-            bytes = decode_form_reg1(core, pc, NULL, regs);
             check_registers(core, regs, 1);
 
             next_pc = core->gprs[regs[0]];
@@ -1033,10 +713,9 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
         } break;
         case OPCODE_NOT:
         {
-            bytes = decode_form_reg2(core, pc, NULL, regs);
             check_registers(core, regs, 2);
 
-            uint64_t result;
+            uint64_t result = 0;
             uint64_t left = core->gprs[regs[1]];
 
             switch (opcode) {
@@ -1052,8 +731,6 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
         case OPCODE_MTCR:
         {
             check_privilege(core);
-
-            bytes = decode_form_reg2(core, pc, NULL, regs);
             // @TODO Check that control register is valid.
             check_registers(core, regs, 2);
 
@@ -1071,8 +748,6 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
         case OPCODE_MFCR:
         {
             check_privilege(core);
-
-            bytes = decode_form_reg2(core, pc, NULL, regs);
             // @TODO Check that control register is valid.
             check_registers(core, regs, 2);
 
@@ -1090,8 +765,6 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
         case OPCODE_MSCR:
         {
             check_privilege(core);
-
-            bytes = decode_form_reg2(core, pc, NULL, regs);
             // @TODO Check that control register is valid.
             check_registers(core, regs, 2);
 
@@ -1122,7 +795,6 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
         case OPCODE_SHL:
         case OPCODE_SHR:
         {
-            bytes = decode_form_reg3(core, pc, NULL, regs);
             check_registers(core, regs, 3);
 
             uint64_t result;
@@ -1187,7 +859,6 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
         case OPCODE_JMP1:
         case OPCODE_JMP2:
         {
-            bytes = decode_form_pc(core, pc, OPCODE_JMP, NULL, &relative);
 
             next_pc = pc + bytes + relative;
             LOG_INST("jmp\n");
@@ -1196,7 +867,6 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
         case OPCODE_CALL1:
         case OPCODE_CALL2:
         {
-            bytes = decode_form_pc(core, pc, OPCODE_CALL, NULL, &relative);
 
             core->lr = pc + bytes;
             next_pc = pc + bytes + relative;
@@ -1216,7 +886,6 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
         case OPCODE_PUSH:
         case OPCODE_POP:
         {
-            bytes = decode_form_reg1(core, pc, NULL, regs);
             check_registers(core, regs, 1);
 
             if (opcode == OPCODE_PUSH) {
@@ -1243,8 +912,6 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
         case OPCODE_RESTORE:
         {
             check_privilege(core);
-
-            bytes = decode_form_reg1_imm(core, pc, opcode, NULL, regs, &immediate);
             check_registers(core, regs, 1);
 
             int regCount = core->mode == MODE_16 ? 16 : 32;
@@ -1283,7 +950,6 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
             uint64_t tickCounter = core->tickCounter;
 
             if (opcode == OPCODE_RDTICK2) {
-                bytes = decode_form_reg4(core, pc, NULL, regs);
                 check_registers(core, regs, 4);
                 
                 core->gprs[regs[0]] = (tickCounter >>  0) & 0xFFFF;
@@ -1291,7 +957,6 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
                 core->gprs[regs[2]] = (tickCounter >> 32) & 0xFFFF;
                 core->gprs[regs[3]] = (tickCounter >> 48) & 0xFFFF;
             } else if (opcode == OPCODE_RDTICK1) {
-                bytes = decode_form_reg2(core, pc, NULL, regs);
                 check_registers(core, regs, 2);
 
                 if (core->mode == MODE_16) {
@@ -1302,7 +967,6 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
                     core->gprs[regs[1]] = (tickCounter >> 32) & 0xFFFFFFFF;
                 }
             } else if (opcode == OPCODE_RDTICK) {
-                bytes = decode_form_reg1(core, pc, NULL, regs);
                 check_registers(core, regs, 1);
                 
                 if (core->mode == MODE_16) {
@@ -1326,7 +990,6 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
 
             uint64_t delta;
             if (opcode == OPCODE_ADVTIMER2) {
-                bytes = decode_form_reg4(core, pc, NULL, regs);
                 check_registers(core, regs, 4);
 
                 delta = ((core->gprs[regs[0]] & 0xFFFF) <<  0) |
@@ -1335,7 +998,6 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
                         ((core->gprs[regs[3]] & 0xFFFF) << 48);
 
             } else if (opcode == OPCODE_ADVTIMER1) {
-                bytes = decode_form_reg2(core, pc, NULL, regs);
                 check_registers(core, regs, 2);
                 
                 if (core->mode == MODE_16) {
@@ -1346,7 +1008,6 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
                             ((core->gprs[regs[1]] & 0xFFFFFFFF) << 32);
                 }
             } else if (opcode == OPCODE_ADVTIMER) {
-                bytes = decode_form_reg1(core, pc, NULL, regs);
                 check_registers(core, regs, 1);
 
                 if (core->mode == MODE_16) {
@@ -1366,7 +1027,6 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
         case OPCODE_JZ:
         case OPCODE_JNZ:
         {
-            bytes = decode_form_jmp_reg1(core, pc, NULL, regs, &relative);
             check_registers(core, regs, 1);
 
             uint64_t result;
@@ -1387,7 +1047,6 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
         } break;
         case OPCODE_JCOND:
         {
-            bytes = decode_form_jmp_reg2(core, pc, NULL, &cond, regs, &relative);
             check_registers(core, regs, 2);
 
             bool result;
@@ -1449,7 +1108,6 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
         case OPCODE_XADD:
         case OPCODE_CAS:
         {
-            bytes = decode_form_memory(core, pc, NULL, regs, &addressingForm, &displacement);
             check_registers(core, regs, 4);
 
             if ((opcode == OPCODE_LDL || opcode == OPCODE_LDLS || opcode == OPCODE_STL)
@@ -1469,7 +1127,7 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
             // @TODO Certain addressing forms such as 64-bit absolute should not be allowed in 16-bit mode.
             //   We need to decide which ones and put it into ISA. We need to put info that li64 not available in 16-bit mode too.
 
-            uint64_t result;
+            uint64_t result = 0;
             uint64_t address;
 
             int memoryRegIndexBase = opcode == OPCODE_CAS ? 2 : 1;
@@ -1644,7 +1302,6 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
         } break;
         case OPCODE_CPUFEAT:
         {
-            bytes = decode_form_reg2(core, pc, NULL, regs);
             check_registers(core, regs, 2);
 
             FeatureID featureID = core->gprs[regs[1]];

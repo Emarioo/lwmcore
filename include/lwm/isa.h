@@ -217,6 +217,11 @@ typedef enum {
     CPUFEAT_FEATURES0_FLOAT = 0x1,
 } FeatureID_Features0;
 
+typedef enum {
+    MMU_READ,
+    MMU_WRITE,
+    MMU_READ_EXEC,
+} MMUOperation;
 
 
 

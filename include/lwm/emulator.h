@@ -6,6 +6,7 @@
 #include <setjmp.h>
 
 #include "lwm/isa.h"
+#include "lwm/encoding.h"
 
 typedef struct EmulatorContext EmulatorContext;
 
@@ -16,8 +17,8 @@ typedef enum {
     MODE_64,
 } CoreMode;
 
-
-typedef struct {
+typedef struct CoreState CoreState;
+struct CoreState {
 
     CoreMode mode;
 
@@ -69,8 +70,9 @@ typedef struct {
     bool running;
     jmp_buf loop_jmpbuf;
 
+    Decoder decoder;
     EmulatorContext* emulator;
-} CoreState;
+};
 
 
 #define BITS_PER_PENDING_VECTOR_INDEX(CORE) (8*sizeof(*(CORE)->pendingVectors))

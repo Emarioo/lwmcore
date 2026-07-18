@@ -1,7 +1,7 @@
 
 #include "lwm/encoding.h"
+#include "lwm/asm_types.h"
 
-#include "lwm/builder.h"
 
 bool prepare_encode_inst(string mnemonic, Instruction* inst, int* minBytes, int* maxBytes) {
 
@@ -429,3 +429,480 @@ int regname_to_number(string name) {
     return 10 * (name.ptr[1] - '0') + name.ptr[2] - '0';
 }
 
+// #############################3
+//     DECODING
+// #############################3
+
+#define BITMASK(WORD, BL, BH) ( ((WORD) >> BL) & ( ((uint64_t)1 << ((1+BH)-BL)) - 1 ) )
+
+
+#define  READ8(address) read_exec_address8(decoder, address)
+#define READ16(address) read_exec_address16(decoder, address)
+#define READ32(address) read_exec_address32(decoder, address)
+#define READ64(address) read_exec_address64(decoder, address)
+
+static inline uint8_t read_exec_address8(Decoder* decoder, uint64_t address) {
+    uint8_t value;
+    decoder->mmu_operation(decoder->core, MMU_READ_EXEC, address, 1, &value, false);
+    return value;
+}
+static inline uint16_t read_exec_address16(Decoder* decoder, uint64_t address) {
+    uint16_t value;
+    decoder->mmu_operation(decoder->core, MMU_READ_EXEC, address, 2, &value, false);
+    return value;
+}
+static inline uint32_t read_exec_address32(Decoder* decoder, uint64_t address) {
+    uint32_t value;
+    decoder->mmu_operation(decoder->core, MMU_READ_EXEC, address, 4, &value, false);
+    return value;
+}
+static inline uint64_t read_exec_address64(Decoder* decoder, uint64_t address) {
+    uint64_t value;
+    decoder->mmu_operation(decoder->core, MMU_READ_EXEC, address, 8, &value, false);
+    return value;
+}
+
+int decode_form_reg1_imm(Decoder* decoder, uint64_t pc, uint32_t opcodeBase, uint32_t* opcode, uint8_t regs[1], uint64_t* immediate) {
+
+    uint32_t tmp_opcode = READ8(pc);
+    if (opcode) {
+        *opcode = tmp_opcode;
+    }
+    regs[0] = READ8(pc + 1);
+
+    int immediateSize = 1 << (tmp_opcode - opcodeBase);
+
+    if (opcodeBase == OPCODE_LIS8) {
+        if (immediateSize == 1)
+            *immediate = (int64_t)(int8_t)READ8(pc + 2);
+        else if (immediateSize == 2)
+            *immediate = (int64_t)(int16_t)READ16(pc + 2);
+        else if (immediateSize == 4)
+            *immediate = (int64_t)(int32_t)READ32(pc + 2);
+        else if (immediateSize == 8)
+            *immediate = (int64_t)READ64(pc + 2);
+    } else {
+        if (immediateSize == 1)
+            *immediate = (uint64_t)(uint8_t)READ8(pc + 2);
+        else if (immediateSize == 2)
+            *immediate = (uint64_t)(uint16_t)READ16(pc + 2);
+        else if (immediateSize == 4)
+            *immediate = (uint64_t)(uint32_t)READ32(pc + 2);
+        else if (immediateSize == 8)
+            *immediate = (uint64_t)READ64(pc + 2);
+    }
+
+    return 2 + immediateSize;
+}
+
+
+int decode_form_reg1(Decoder* decoder, uint64_t pc, uint32_t* opcode, uint8_t regs[1]) {
+
+    uint32_t tmp_opcode = READ8(pc);
+    if (opcode) {
+        *opcode = tmp_opcode;
+    }
+
+    regs[0] = READ8(pc+1);
+
+    return 2;
+}
+
+int decode_form_reg2(Decoder* decoder, uint64_t pc, uint32_t* opcode, uint8_t regs[2]) {
+
+    uint32_t tmp_opcode = READ8(pc);
+    if (opcode) {
+        *opcode = tmp_opcode;
+    }
+
+    regs[0] = READ8(pc+1);
+    regs[1] = READ8(pc+2);
+
+    return 3;
+}
+
+int decode_form_reg3(Decoder* decoder, uint64_t pc, uint32_t* opcode, uint8_t regs[3]) {
+
+    uint32_t tmp_opcode = READ8(pc);
+    if (opcode) {
+        *opcode = tmp_opcode;
+    }
+
+    regs[0] = READ8(pc+1);
+    regs[1] = READ8(pc+2);
+    regs[2] = READ8(pc+3);
+
+    return 4;
+}
+
+int decode_form_reg4(Decoder* decoder, uint64_t pc, uint32_t* opcode, uint8_t regs[4]) {
+
+    uint32_t tmp_opcode = READ8(pc);
+    if (opcode) {
+        *opcode = tmp_opcode;
+    }
+
+    regs[0] = READ8(pc+1);
+    regs[1] = READ8(pc+2);
+    regs[2] = READ8(pc+3);
+    regs[3] = READ8(pc+4);
+
+    return 5;
+}
+
+int decode_form_pc(Decoder* decoder, uint64_t pc, uint32_t opcodeBase, uint32_t* opcode, int32_t* immediate) {
+
+    uint32_t tmp_opcode = READ8(pc);
+    if (opcode) {
+        *opcode = tmp_opcode;
+    }
+
+    int immediateSize = 1 << (tmp_opcode - opcodeBase);
+
+    if (immediateSize == 1)
+        *immediate = (int8_t)READ8(pc + 1);
+    else if (immediateSize == 2)
+        *immediate = (int16_t)READ16(pc + 1);
+    else if (immediateSize == 4)
+        *immediate = (int32_t)READ32(pc + 1);
+
+    return 1 + immediateSize;
+}
+
+int decode_form_jmp_reg1(Decoder* decoder, uint64_t pc, uint32_t* opcode, uint8_t regs[1], int32_t* relative) {
+
+    uint32_t tmp_opcode = READ8(pc);
+    if (opcode) {
+        *opcode = tmp_opcode;
+    }
+
+    // [opcode 8 | flags 3 | reg 5 | relative8/16/32 ]
+    // flags 3 = relsize 2 | reserved 1
+
+    uint8_t word = (uint8_t)READ8(pc+1);
+
+    int flags = BITMASK(word, 0, 2);
+    regs[0]   = BITMASK(word, 3, 7);
+
+    int immediateSize = 1 << (flags & 0x3);
+
+    if (immediateSize == 1)
+        *relative = (int8_t)READ8(pc + 2);
+    else if (immediateSize == 2)
+        *relative = (int16_t)READ16(pc + 2);
+    else if (immediateSize == 4)
+        *relative = (int32_t)READ32(pc + 2);
+
+    return 2 + immediateSize;
+}
+
+int decode_form_jmp_reg2(Decoder* decoder, uint64_t pc, uint32_t* opcode, ConditionKind* cond, uint8_t regs[2], int32_t* relative) {
+
+    uint32_t tmp_opcode = READ8(pc);
+    if (opcode) {
+        *opcode = tmp_opcode;
+    }
+
+    // [opcode 8 | flags 6 | reg 5 | reg 5 | relative8/16/32 ]
+    // flags 6 = relsize 2 | cond 4
+
+    uint16_t word = (uint16_t)READ8(pc+1) | ((uint16_t)READ8(pc+2) << 8);
+
+    int flags = BITMASK(word, 0, 5);
+    regs[0] = BITMASK(word, 6, 10);
+    regs[1] = BITMASK(word, 11, 15);
+
+    int immediateSize = 1 << (flags & 0x3);
+    int condition     = (flags >> 2) & 0x3F;
+
+    *cond = condition;
+
+    if (immediateSize == 1)
+        *relative = (int8_t)READ8(pc + 3);
+    else if (immediateSize == 2)
+        *relative = (int16_t)READ16(pc + 3);
+    else if (immediateSize == 4)
+        *relative = (int32_t)READ32(pc + 3);
+
+    return 3 + immediateSize;
+}
+
+int decode_form_memory(Decoder* decoder, uint64_t pc, uint32_t* opcode, uint8_t regs[4], AddressingForm* addressingForm, int64_t* displacement) {
+    /*
+    lea r0, [r1 + disp8/16/32]
+        [ opcode 8 | reg 5 | reg 5 | disp8 ]
+        [ opcode 8 | reg 5 | reg 5 | disp16 ]
+        [ opcode 8 | reg 5 | reg 5 | disp32 ]
+
+    lea r0, [r1 + r2 + disp8/16/32]
+        [ opcode 8 | reg 5 | reg 5 | reg 5 | disp8 ]
+        [ opcode 8 | reg 5 | reg 5 | reg 5 | disp16 ]
+        [ opcode 8 | reg 5 | reg 5 | reg 5 | disp32 ]
+
+    lea r0, [pc + disp8/16/32]
+        [ opcode 8 | reg 5 | disp8/16/64 ]
+
+    lea r0, [16/32/64]
+        [ opcode 8 | reg 5 | disp16/32/64 ]
+
+    All fields excluding flags
+        [ opcode 8 | reg 5 | reg 5 | reg 5 | disp8/16/32/64 ]
+
+    Base memory encoding
+        [ opcode 8 | flags 3 | reg 5 ]
+    */
+
+    regs[0] = 0; // Clear since we may not set them and code that checks valid
+    regs[1] = 0; // registers won't fail because of uninitialized values.
+    regs[2] = 0;
+    regs[3] = 0;
+
+    uint32_t tmp_opcode = READ8(pc);
+    if (opcode) {
+        *opcode = tmp_opcode;
+    }
+
+    uint8_t word = (uint8_t)READ8(pc+1);
+    
+    int flags = BITMASK(word, 0, 2);
+    regs[0]   = BITMASK(word, 3, 7);
+
+    if (tmp_opcode == OPCODE_CAS) {
+        regs[1] = READ8(pc+2);
+    }
+    
+    int baseBytes = tmp_opcode == OPCODE_CAS ? 3 : 2;
+    int memoryRegIndexBase = tmp_opcode == OPCODE_CAS ? 2 : 1;
+
+    AddressingForm form = ADDRESSING_ENUM(flags, 0);
+    *addressingForm = form;
+
+    if (form == ADDRESSING_ABS16) {
+        *displacement = (uint16_t)READ16(pc + baseBytes);
+        return largest_encoding(tmp_opcode, form);
+
+    } else if (form == ADDRESSING_ABS32) {
+        *displacement = (uint32_t)READ32(pc + baseBytes);
+        return largest_encoding(tmp_opcode, form);
+
+    } else if (form == ADDRESSING_ABS64) {
+        *displacement = (uint64_t)READ64(pc + baseBytes);
+        return largest_encoding(tmp_opcode, form);
+
+    } else if (form == ADDRESSING_REG1_DISP8) {
+
+        uint8_t extraWord = (uint8_t)READ8(pc + baseBytes);
+        int extraFlags = BITMASK(extraWord, 0, 2);
+        regs[memoryRegIndexBase]   = BITMASK(extraWord, 3, 7);
+
+        form = ADDRESSING_ENUM(flags, extraFlags);
+        *addressingForm = form;
+
+        if (form == ADDRESSING_REG1_DISP8) {
+            *displacement = (int8_t)READ8(pc + baseBytes + 1);
+            return largest_encoding(tmp_opcode, form);
+        } else if (form == ADDRESSING_REG1_DISP16) {
+            *displacement = (int16_t)READ16(pc + baseBytes + 1);
+            return largest_encoding(tmp_opcode, form);
+        } else if (form == ADDRESSING_REG1_DISP32) {
+            *displacement = (int32_t)READ32(pc + baseBytes + 1);
+            return largest_encoding(tmp_opcode, form);
+        } else if (form == ADDRESSING_REG1_DISP64) {
+            *displacement = (int64_t)READ64(pc + baseBytes + 1);
+            return largest_encoding(tmp_opcode, form);
+        } else if (form == ADDRESSING_REG1_PC_DISP8) {
+            *displacement = (int8_t)READ8(pc + baseBytes + 1);
+            return largest_encoding(tmp_opcode, form);
+        } else if (form == ADDRESSING_REG1_PC_DISP16) {
+            *displacement = (int16_t)READ16(pc + baseBytes + 1);
+            return largest_encoding(tmp_opcode, form);
+        } else if (form == ADDRESSING_REG1_PC_DISP32) {
+            *displacement = (int32_t)READ32(pc + baseBytes + 1);
+            return largest_encoding(tmp_opcode, form);
+        } else {
+            return 0;
+        }
+
+    } else if (form == ADDRESSING_REG2_DISP8) {
+        
+        uint16_t extraWord = (uint16_t)READ16(pc + baseBytes);
+        int extraFlags = BITMASK(extraWord, 0, 2) | (BITMASK(extraWord, 8, 10) << 3);
+        regs[memoryRegIndexBase]   = BITMASK(extraWord, 3, 7);
+        regs[memoryRegIndexBase + 1]   = BITMASK(extraWord, 11, 15);
+        
+        form = ADDRESSING_ENUM(flags, extraFlags);
+        *addressingForm = form;
+
+        if (form == ADDRESSING_REG2_DISP8) {
+            *displacement = (int8_t)READ8(pc + baseBytes + 2);
+            return largest_encoding(tmp_opcode, form);
+        } else if (form == ADDRESSING_REG2_DISP16) {
+            *displacement = (int16_t)READ16(pc + baseBytes + 2);
+            return largest_encoding(tmp_opcode, form);
+        } else if (form == ADDRESSING_REG2_DISP32) {
+            *displacement = (int32_t)READ32(pc + baseBytes + 2);
+            return largest_encoding(tmp_opcode, form);
+        } else {
+            return 0;
+        }
+
+    } else if (form == ADDRESSING_PC_DISP8) {
+        *displacement = (int8_t)READ8(pc + baseBytes);
+        return largest_encoding(tmp_opcode, form);
+        
+    } else if (form == ADDRESSING_PC_DISP16) {
+        *displacement = (int16_t)READ16(pc + baseBytes);
+        return largest_encoding(tmp_opcode, form);
+        
+    } else if (form == ADDRESSING_PC_DISP32) {
+        *displacement = (int32_t)READ32(pc + baseBytes);
+        return largest_encoding(tmp_opcode, form);
+
+    } else {
+        return 0;
+    }
+
+    return 0;
+}
+
+
+int decode_inst(Decoder* decoder, uintptr_t pc, uint32_t* out_opcode, uint8_t* regs, uint64_t* immediate, ConditionKind* cond, AddressingForm* addressingForm) {
+
+    int32_t relative;
+    int64_t displacement;
+    int bytes = 1;
+    uint32_t opcode = READ8(pc);
+    *out_opcode = opcode;
+
+    switch (opcode) {
+        case OPCODE_LI8:
+        case OPCODE_LI16:
+        case OPCODE_LI32:
+        case OPCODE_LI64:
+        case OPCODE_LIS8:
+        case OPCODE_LIS16:
+        case OPCODE_LIS32:
+        case OPCODE_LIS64:
+        {
+            int opcodeBase = opcode >= OPCODE_LIS8 ? OPCODE_LIS8 : OPCODE_LI8;
+            bytes = decode_form_reg1_imm(decoder, pc, opcodeBase, NULL, regs, immediate);
+        } break;
+        case OPCODE_CALL_REG:
+        case OPCODE_JMP_REG:
+        case OPCODE_PUSH:
+        case OPCODE_POP:
+        {
+            bytes = decode_form_reg1(decoder, pc, NULL, regs);
+        } break;
+        case OPCODE_NOT:
+        case OPCODE_MTCR:
+        case OPCODE_MFCR:
+        case OPCODE_MSCR:
+        case OPCODE_CPUFEAT:
+        {
+            bytes = decode_form_reg2(decoder, pc, NULL, regs);
+            bytes = decode_form_reg2(decoder, pc, NULL, regs);
+            bytes = decode_form_reg2(decoder, pc, NULL, regs);
+        } break;
+        case OPCODE_ADD:
+        case OPCODE_SUB:
+        case OPCODE_UMUL:
+        case OPCODE_UDIV:
+        case OPCODE_UMOD:
+        case OPCODE_SMUL:
+        case OPCODE_SDIV:
+        case OPCODE_SMOD:
+        case OPCODE_AND:
+        case OPCODE_OR:
+        case OPCODE_XOR:
+        case OPCODE_SHL:
+        case OPCODE_SHR:
+        {
+            bytes = decode_form_reg3(decoder, pc, NULL, regs);
+        } break;
+        case OPCODE_JMP:
+        case OPCODE_JMP1:
+        case OPCODE_JMP2:
+        {
+            bytes = decode_form_pc(decoder, pc, OPCODE_JMP, NULL, &relative);
+            *immediate = relative;
+        } break;
+        case OPCODE_CALL:
+        case OPCODE_CALL1:
+        case OPCODE_CALL2:
+        {
+            bytes = decode_form_pc(decoder, pc, OPCODE_CALL, NULL, &relative);
+            *immediate = relative;
+        } break;
+        case OPCODE_SAVE:
+        case OPCODE_RESTORE:
+        {
+            bytes = decode_form_reg1_imm(decoder, pc, opcode, NULL, regs, immediate);
+        } break;
+        case OPCODE_RDTICK: {
+            bytes = decode_form_reg1(decoder, pc, NULL, regs);
+        } break;
+        case OPCODE_RDTICK1: {
+            bytes = decode_form_reg2(decoder, pc, NULL, regs);
+        } break;
+        case OPCODE_RDTICK2: {
+            bytes = decode_form_reg4(decoder, pc, NULL, regs);
+        } break;
+        case OPCODE_ADVTIMER:  {
+            bytes = decode_form_reg1(decoder, pc, NULL, regs);
+        } break;
+        case OPCODE_ADVTIMER1: {
+            bytes = decode_form_reg2(decoder, pc, NULL, regs);
+        } break;
+        case OPCODE_ADVTIMER2: {
+            bytes = decode_form_reg4(decoder, pc, NULL, regs);
+        } break;
+        case OPCODE_JZ:
+        case OPCODE_JNZ:
+        {
+            bytes = decode_form_jmp_reg1(decoder, pc, NULL, regs, &relative);
+            *immediate = relative;
+        } break;
+        case OPCODE_JCOND:
+        {
+            bytes = decode_form_jmp_reg2(decoder, pc, NULL, cond, regs, &relative);
+            *immediate = relative;
+        } break;
+        case OPCODE_LEA:
+        case OPCODE_LDB:
+        case OPCODE_LDBS:
+        case OPCODE_LDH:
+        case OPCODE_LDHS:
+        case OPCODE_LDL:
+        case OPCODE_LDLS:
+        case OPCODE_LDQ:
+        case OPCODE_STB:
+        case OPCODE_STH:
+        case OPCODE_STL:
+        case OPCODE_STQ:
+        case OPCODE_XADD:
+        case OPCODE_CAS:
+        {
+            bytes = decode_form_memory(decoder, pc, NULL, regs, addressingForm, &displacement);
+            *immediate = displacement;
+        } break;
+        case OPCODE_RET:
+        case OPCODE_NOP:
+        case OPCODE_SYSCALL:
+        case OPCODE_VRET:
+        case OPCODE_DBG:
+        case OPCODE_EINT:
+        case OPCODE_DINT:
+        case OPCODE_SLOW:
+        case OPCODE_WFI:
+        case OPCODE_TLBFLUSH:
+        case OPCODE_VMSTART:
+        {
+        } break;
+        default: {
+            // Invalid instruction
+            return 0;
+        }
+    }
+    return bytes;
+}

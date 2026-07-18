@@ -5,62 +5,50 @@
 
 #include "lwm/util.h"
 #include "lwm/isa.h"
+#include "lwm/encoding.h"
 
 #include "lwm/parser_util.h"
 
-typedef struct {
+typedef struct Label Label;
+struct Label {
     string name;
     int object_id;
     uintptr_t final_address;
     uintptr_t estimated_addressLow;
     uintptr_t estimated_addressHigh;
-} Label;
+};
 
-typedef struct {
-    string label;
-    union {
-        int regnum;
-        int reg_base;
-    };
-    int64_t immediate;
-    AddressingForm form;
-    int reg_index;
-} Operand;
 
-typedef struct {
-    u8      opcode;
-    u8      sub_opcode;
-    u8      operands_len;
-    int     parseHead;
-    Operand operands[4];
-} Instruction;
-
-typedef struct {
+typedef struct LabelValue LabelValue;
+struct LabelValue {
     uint32_t offset; // relative to data object
     string   label;
-} LabelValue;
+};
 
-typedef struct {
+typedef struct DataObject DataObject;
+struct DataObject {
     u8*         bytes;
     int         size;
     uint16_t    elementSize;
     uint16_t    labels_len;
     LabelValue* labels;
-} DataObject;
+};
 
 #define OBJECT_INSTRUCTION 0
 #define OBJECT_DATA 1
 
-typedef struct {
+typedef struct Object Object;
+struct Object {
     u8 kind;
     u8 alignment; // (1 << alignment)
     union {
         Instruction inst;
         DataObject  dataobj;
     };
-} Object;
+};
 
-typedef struct {
+typedef struct Section Section;
+struct Section {
     string   name;
     uint64_t addr;
     uint64_t size;
@@ -76,13 +64,14 @@ typedef struct {
 
     uint64_t estimatedAddress_low; // relative to section
     uint64_t estimatedAddress_high;
-} Section;
+};
 
 
-typedef struct {
+typedef struct LabelFixup LabelFixup;
+struct LabelFixup {
     Label*   label;
     uint64_t rom_offset;
     uint8_t  reloc_size;
     bool     absolute;
-} LabelFixup;
+};
 

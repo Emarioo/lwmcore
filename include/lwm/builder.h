@@ -5,9 +5,29 @@
 #include <stddef.h>
 #include <stdbool.h>
 
+#include "lwm/util.h"
 #include "lwm/isa.h"
-#include "lwm/asm_types.h"
 
+typedef struct LabelFixup LabelFixup;
+
+typedef struct {
+    string label;
+    union {
+        int regnum;
+        int reg_base;
+    };
+    int64_t immediate;
+    AddressingForm form;
+    int reg_index;
+} Operand;
+
+typedef struct {
+    u8      opcode;
+    u8      sub_opcode;
+    u8      operands_len;
+    int     parseHead;
+    Operand operands[4];
+} Instruction;
 
 typedef LabelFixup*(*FN_create_fixup)(void* context, Instruction* inst, Operand* labelOperand);
 
