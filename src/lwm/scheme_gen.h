@@ -1,3 +1,12 @@
+/*
+
+scheme_Database db;
+parse_scheme("examples/lwm.scheme", &db);
+
+generate_encoder(&db, "include/lwm/encoding-auto.h", "src/lwm/encoding-auto.c")
+
+*/
+
 #pragma once
 
 #include <stdint.h>
@@ -52,7 +61,7 @@ typedef struct {
 
 void parse_scheme(const char* path, scheme_Database* database);
 
-void generate_encoder(scheme_Database* database);
+void generate_encoder(scheme_Database* database, const char* headerFile, const char* sourceFile);
 
 void dump_scheme(scheme_Database* db);
 

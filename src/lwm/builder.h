@@ -6,11 +6,18 @@
 #include <stdbool.h>
 
 #include "lwm/isa.h"
+#include "lwm/asm_types.h"
+
+
+typedef LabelFixup*(*FN_create_fixup)(void* context, Instruction* inst, Operand* labelOperand);
 
 typedef struct {
     uint8_t* byteStream;
     size_t   byteStream_len;
     size_t   byteStream_max;
+
+    void*           context;
+    FN_create_fixup create_fixup;
 } Builder;
 
 void builder_init(Builder* builder);

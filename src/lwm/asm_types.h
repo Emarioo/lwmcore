@@ -78,3 +78,11 @@ typedef struct {
     uint64_t estimatedAddress_high;
 } Section;
 
+
+typedef struct {
+    Label*   label;
+    uint64_t rom_offset;
+    uint8_t  reloc_size;
+    bool     absolute;
+} LabelFixup;
+

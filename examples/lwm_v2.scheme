@@ -1,0 +1,123 @@
+
+
+field imm 8, 16, 32, 64
+
+instruction li  reg  imm
+
+
+// Fields in instructions
+field reg 5
+field imm8 8
+field imm16 16
+field imm32 32
+field imm64 64
+
+// Default priority is 0
+priority COMMON 1
+priority RARE -1
+
+// Instructions
+instruction li16 reg imm16 COMMON
+instruction li32 reg imm32
+instruction li64 reg imm64
+
+instruction call_reg reg
+instruction jmp_reg  reg
+instruction push     reg COMMON
+instruction pop      reg COMMON
+instruction tlbflush reg RARE
+
+instruction mov     reg reg COMMON
+instruction not     reg reg
+instruction mfcr    reg reg RARE
+instruction mtcr    reg reg RARE
+instruction cpufeat reg reg RARE
+
+instruction add  reg reg reg COMMON
+instruction sub  reg reg reg COMMON
+instruction umul reg reg reg
+instruction udiv reg reg reg
+instruction umod reg reg reg
+instruction smul reg reg reg
+instruction sdiv reg reg reg
+instruction smod reg reg reg
+instruction and  reg reg reg
+instruction or   reg reg reg COMMON
+instruction xor  reg reg reg
+instruction shl  reg reg reg
+instruction shr  reg reg reg
+
+instruction jmp8   imm8 COMMON
+instruction jmp16  imm16 COMMON
+instruction jmp32  imm32
+instruction call8  imm8 COMMON
+instruction call16 imm16 COMMON
+instruction call32 imm32
+
+instruction ret
+instruction syscall RARE
+instruction vret RARE
+instruction dbg
+instruction eint RARE
+instruction dint RARE
+instruction slow RARE
+instruction wfi RARE
+instruction nop
+instruction vmstart RARE
+
+instruction save    reg imm8 RARE
+instruction restore reg imm8 RARE
+
+instruction jz8   reg imm8 COMMON
+instruction jz16  reg imm16 COMMON
+instruction jz32  reg imm32
+instruction jnz8  reg imm8 COMMON
+instruction jnz16 reg imm16 COMMON
+instruction jnz32 reg imm32
+
+#define JMP_COND(COND)
+instruction j%COND%8  reg reg imm8 COMMON
+instruction j%COND%16 reg reg imm16 COMMON
+instruction j%COND%32 reg reg imm32
+#endmacro
+
+#JMP_COND(eq)
+#JMP_COND(ne)
+#JMP_COND(lt)
+#JMP_COND(le)
+#JMP_COND(gt)
+#JMP_COND(ge)
+#JMP_COND(a)
+#JMP_COND(ae)
+#JMP_COND(b)
+#JMP_COND(be)
+
+#define MEMOP(KIND)
+instruction %KIND%_abs16       reg imm16
+instruction %KIND%_abs32       reg imm32
+instruction %KIND%_abs64       reg imm64 RARE
+instruction %KIND%_reg_disp8   reg reg imm8 COMMON
+instruction %KIND%_reg_disp16  reg reg imm16 COMMON
+instruction %KIND%_reg_disp32  reg reg imm32
+instruction %KIND%_reg2_disp8  reg reg reg imm8 COMMON
+instruction %KIND%_reg2_disp16 reg reg reg imm16 COMMON
+instruction %KIND%_reg2_disp32 reg reg reg imm32
+instruction %KIND%_pc_disp32   reg imm32 COMMON
+#endmacro
+
+#MEMOP(lea)
+#MEMOP(ldb)
+#MEMOP(ldbs)
+#MEMOP(ldh)
+#MEMOP(ldhs)
+#MEMOP(ldl)
+#MEMOP(ldls)
+#MEMOP(ldq)
+#MEMOP(stb)
+#MEMOP(sth)
+#MEMOP(stl)
+#MEMOP(stq)
+
+instruction rdtick  reg RARE
+instruction rdtick1 reg reg RARE
+instruction rdtick2 reg reg reg reg RARE

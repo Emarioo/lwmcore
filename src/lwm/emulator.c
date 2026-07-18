@@ -959,17 +959,22 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
     core->instructionSteps++;
 
     uint64_t pc = core->pc;
-    uint8_t opcodeByte;
+    uint8_t  opcodeByte;
     uint32_t opcode;
-
-    opcodeByte = READ8(pc);
-
     uint64_t next_pc = -1;
     uint8_t  regs[4];
     uint64_t immediate = 0;
     int32_t  relative = 0;
     int      bytes;
+    ConditionKind cond;
+    AddressingForm addressingForm;
+    int64_t displacement;
 
+    // bytes = decode_inst(core, pc, &opcode, &regs, &immediate, &cond, &addressingForm);
+    // relative = (int32_t)(uint32_t)immediate;
+    // displacement = (int64_t)immediate;
+
+    opcodeByte = READ8(pc);
 
     opcode = opcodeByte;
     switch (opcode) {
@@ -1382,7 +1387,6 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
         } break;
         case OPCODE_JCOND:
         {
-            ConditionKind cond;
             bytes = decode_form_jmp_reg2(core, pc, NULL, &cond, regs, &relative);
             check_registers(core, regs, 2);
 
@@ -1445,8 +1449,6 @@ void emulator_step(EmulatorContext* emulator, int cpuid) {
         case OPCODE_XADD:
         case OPCODE_CAS:
         {
-            AddressingForm addressingForm;
-            int64_t displacement;
             bytes = decode_form_memory(core, pc, NULL, regs, &addressingForm, &displacement);
             check_registers(core, regs, 4);
 

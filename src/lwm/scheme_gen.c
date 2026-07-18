@@ -188,7 +188,7 @@ void parse_scheme(const char* path, scheme_Database* database) {
         }
     }
     
-    generate_encoder(database);
+    generate_encoder(database, "include/lwm/encoding-auto.h", "src/lwm/encoding-auto.c");
 
     dump_scheme(database);
 }
@@ -228,7 +228,7 @@ int cmp_priority(const void* a, const void* b) {
     return pb->priority - pa->priority; // descending
 }
 
-void generate_encoder(scheme_Database* db) {
+void generate_encoder(scheme_Database* db, const char* headerFile, const char* sourceFile) {
 
     /*
         Stuff to think about:
