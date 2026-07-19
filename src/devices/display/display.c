@@ -73,6 +73,7 @@ bool device_event(HardwareDevice* device, HardwareEvent eventType, uintptr_t arg
             device->mmio_read = device_read;
             device->mmio_write = device_write;
 
+            // @TODO Add setting in platform config that lets you choose resolution.
             state->ram.width  = 640;
             state->ram.height = 480;
             state->ram.stride = state->ram.width * 4;

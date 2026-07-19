@@ -1,11 +1,11 @@
 *.exe
-*.dll
-*.lib
 *.o
 *.bin
 *.elf
-*.a
-*.so
+# *.dll
+# *.lib
+# *.a
+# *.so
 
 *.log
 

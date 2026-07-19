@@ -2,7 +2,7 @@
 
 field imm 8, 16, 32, 64
 
-instruction li  reg  imm
+// instruction li  reg  imm
 
 
 // Fields in instructions

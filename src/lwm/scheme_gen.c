@@ -228,7 +228,7 @@ int cmp_priority(const void* a, const void* b) {
     return pb->priority - pa->priority; // descending
 }
 
-void generate_encoder(scheme_Database* db, const char* headerFile, const char* sourceFile) {
+void generate_encoder(scheme_Database* db, const char* headerPath, const char* sourceFile) {
 
     /*
         Stuff to think about:
@@ -295,6 +295,21 @@ void generate_encoder(scheme_Database* db, const char* headerFile, const char* s
 
     printf("Total opcode bits: %d (avg %.2f)\n", numOpcodeBits, (float)numOpcodeBits/(float)instructions_len);
     printf("Total unused bits: %d (avg %.2f)\n", numUnusedBits, (float)numUnusedBits/(float)instructions_len);
+
+
+
+    int text_max = 100000;
+    int text_len = 0;
+    char* text = malloc(text_max);
+
+    #define APPEND(...) text_len += snprintf(text, text_max - text_len, __VA_ARGS__)
+
+    APPEND("#pragam once\n");
+    APPEND("typedef struct CoreState CoreState\n");
+    
+    FILE* headerFile = fopen(headerPath, "wb");
+    fwrite(text, 1, text_len, headerFile);
+    fclose(headerFile);
 }
 
 void dump_scheme(scheme_Database* db) {

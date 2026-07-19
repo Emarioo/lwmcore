@@ -1,11 +1,13 @@
 
 { pkgs ? import <nixpkgs> {} }:
 
-# This is not all dependencies you need on NixOS
-# to build this project.
-
 pkgs.mkShell {
   buildInputs = with pkgs; [
+    gcc
+    python3
+    gnumake
+
+    # For display device
     raylib
     libx11
     glfw

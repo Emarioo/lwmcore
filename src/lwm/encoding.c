@@ -8,23 +8,7 @@ bool prepare_encode_inst(string mnemonic, Instruction* inst, int* minBytes, int*
     #define CASE_OPCODE(STRING, OPCODE) if (equal(mnemonic, STRING)) { inst->opcode = OPCODE; }
     #define CASE_OPCODE2(STRING, OPCODE, SUB_OPCODE) if (equal(mnemonic, STRING)) { inst->opcode = OPCODE; inst->sub_opcode = SUB_OPCODE; }
 
-    if (equal(mnemonic, "mov")) {
-        inst->opcode = OPCODE_OR;
-        inst->operands[2].regnum = inst->operands[1].regnum;
-        inst->operands[1].regnum = inst->operands[1].regnum;
-    }
-    else if (equal(mnemonic, "hlt")) {
-        inst->opcode = OPCODE_STB;
-        inst->sub_opcode = MEMOP_STB;
-        inst->operands[1].form = ADDRESSING_ABS16;
-        inst->operands[1].immediate = 0xF000;
-    }
-    else if (equal(mnemonic, "li")) {
-        inst->opcode = OPCODE_LI64; 
-        if (inst->operands[1].immediate >> 63) {
-            inst->opcode = OPCODE_LIS8 + (inst->opcode - OPCODE_LI8);
-        }
-    }
+    CASE_OPCODE("li", OPCODE_LI64)
     else CASE_OPCODE("lis", OPCODE_LIS64)
     else if (equal(mnemonic, "call")) {
         inst->opcode = OPCODE_CALL;

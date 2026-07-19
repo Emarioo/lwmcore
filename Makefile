@@ -35,13 +35,6 @@ CFLAGS += -Wno-unused-variable -Wno-unused-value -Wno-unused-function -Wno-unuse
 
 LDFLAGS += -g -lm 
 
-# Raylib needed for display device (not emulator itself).
-# Devices such as display will be compiled separately into shared libraries
-# in the future meaning emulator won't need raylib dependency.
-# On NixOS we use raylib specified by shell.nix. We also implicitly get include header.
-# This won't work on Ubuntu...
-LDFLAGS += -lraylib
-
 
 SRC_DIRS := \
 	$(ROOT)/src/lwm \

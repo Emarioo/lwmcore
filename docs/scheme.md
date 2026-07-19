@@ -18,3 +18,15 @@ In C this is easy to decode because one big switch on the opcode and then if sta
 
 In hardware we would be a little smarter
 
+
+
+
+# Generating encode/decode functions
+
+What do we generate.
+
+We generate decoder for mnemonic to opcode.
+Then decoder for opcode and operands to bytes.
+
+
+

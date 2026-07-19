@@ -26,13 +26,13 @@ SILENT ?= @
 
 CC := gcc
 
-CFLAGS += -g $(OFLAG)
+CFLAGS += -g $(OFLAG) -fPIC
 CFLAGS += -I$(ROOT)/include -I$(DEVICE_ROOT)
 CFLAGS += -Wall -Werror -fshort-wchar -Werror=implicit-function-declaration
 CFLAGS += -Wno-multichar
 CFLAGS += -Wno-unused-variable -Wno-unused-value -Wno-unused-function -Wno-unused-but-set-variable -Wno-unused-result
 
-LDFLAGS := -shared -g -lm $(LDFLAGS)
+LDFLAGS := -shared -g $(LDFLAGS) -lm
 
 SRC_DIRS += \
 	$(DEVICE_ROOT) \

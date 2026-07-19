@@ -74,6 +74,14 @@ CORE[1] Not started
 |Python   |3.11   |same as above. Python is only used for testing.|
 
 ```bash
+# Ubuntu
+sudo apt install python3 gcc make
+
+# NixOS (shell.nix)
+nix-shell
+```
+
+```bash
 # Clone and build assembler and emulator (bin/lwm contains both)
 git clone https://github.com/Emarioo/lwmcore
 cd lwmcore
@@ -108,7 +116,7 @@ tests/run.py
 - [x] Test some 32-bit and 64-bit mode.
 - [x] Make a test suite for various instructions and exception, paging semantics. All of the 16/32/64-bit CPUs should be tested.
   
-## Implementation
+## Polish
 - [ ] Put MMIO address definitions in a file where programs can include them so i don't have to update them everywhere.
 - [ ] Operand checks in assembler. Using immediate where only register is allowed for example.
 - [ ] Resolve TODOs in code.
@@ -165,8 +173,8 @@ many instructions and semantics are tested to any degree, bare minimum for testi
 - [x] VRET
 
 # Work for the future
+- [x] Display device. (uart can be used for keyboard input)
 - [ ] Disk device
-- [ ] Display device. (uart can be used for keyboard input)
 - [ ] Implement decoder in logic world.
 - [ ] Floating point arithmetic
 - [ ] Just-In-Time transpiling from LWM to native x86_64. Appreciated when emulating compute heavy programs.
@@ -176,6 +184,6 @@ many instructions and semantics are tested to any degree, bare minimum for testi
 
 See specifications in [docs](/docs). (all documents are work in progress)
 - [ISA](/docs/isa.md) : Details about the CPU's registers, instructions, exception and paging semantics.
-- [Assembly](/docs/assembly.md) : Guide for the assembler.
+- [Assembler](/docs/assembler.md) : Guide for the assembler.
 - [Getting Started](/docs/guide.md) : A complete guide to start using the assembler and emulator.
 - [Realisation in Logic World](/docs/logic_world.md) : How the CPU is or can be realized in Logic World (may not be feasible with the new changes).

@@ -25,6 +25,8 @@ typedef struct {
     char* ptr;
 } string;
 
+#define STRING(STR) ((string){.len = strlen(STR), .ptr = STR})
+
 bool equal(string text, const char* str);
 bool endswith(string text, const char* str);
 int find_string(string text, const char* str);

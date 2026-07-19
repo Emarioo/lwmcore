@@ -790,11 +790,29 @@ AssemblerError assemble(const char* in_text, size_t in_text_len, AssemblerOption
 
         inst.operands_len = operandIndex;
 
+        // Pseudo instructions
+        if (equal(name, "mov")) {
+            name = STRING("or");
+            inst.operands[2].regnum = inst.operands[1].regnum;
+        }
+        else if (equal(name, "hlt")) {
+            name = STRING("stb");
+            inst.operands[0].regnum = 0;
+            inst.operands[1].form = ADDRESSING_ABS16;
+            inst.operands[1].immediate = 0xF000;
+        } else if (equal(name, "li")) {
+            if (inst.operands[1].immediate >> 63) {
+                name = STRING("lis");
+            }
+        }
+
         int minBytes, maxBytes;
         bool decoded = prepare_encode_inst(name, &inst, &minBytes, &maxBytes);
         if (!decoded) {
             ERROR_SRC_RET(location_head, "Unknown instruction '%s'\n", name.ptr);
         }
+
+        
         
 
         Section* currentSection = &context->sections[context->sections_len-1];
